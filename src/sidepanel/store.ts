@@ -44,6 +44,77 @@ function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
   return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
+// ── Context compression ────────────────────────────────────────────────────────
+// Screenshots are base64 PNGs (~50-200 KB each as text). Sending 3+ in history
+// easily pushes past any provider's token limit and causes 400 errors.
+// This runs before every API call — it never touches the stored conversation.
+
+const CTX_MAX_MESSAGES = 30;       // sliding window (15 user+assistant pairs)
+const CTX_MAX_SCREENSHOTS = 2;     // only last 2 screenshots kept verbatim
+const CTX_MAX_TEXT_CHARS = 6000;   // truncate long read_page / tool results
+
+function truncateText(text: string): string {
+  return text.length > CTX_MAX_TEXT_CHARS
+    ? text.slice(0, CTX_MAX_TEXT_CHARS) + '\n…[truncated to save context]'
+    : text;
+}
+
+function compressBlock(block: ContentBlock, keepImage: boolean): ContentBlock {
+  if (block.type !== 'tool_result') return block;
+
+  // String content — just truncate
+  if (typeof block.content === 'string') {
+    return { ...block, content: truncateText(block.content) };
+  }
+
+  if (!Array.isArray(block.content)) return block;
+
+  const hasImage = block.content.some(b => b.type === 'image');
+
+  if (hasImage && !keepImage) {
+    // Drop the screenshot, keep any text parts
+    const textParts = block.content.filter(b => b.type === 'text');
+    return {
+      ...block,
+      content: textParts.length > 0
+        ? textParts.map(b => b.type === 'text' ? { ...b, text: truncateText(b.text) } : b)
+        : [{ type: 'text' as const, text: '[screenshot removed — keeping only last 2 in context]' }],
+    };
+  }
+
+  // Keep image but truncate any text siblings
+  return {
+    ...block,
+    content: block.content.map(b =>
+      b.type === 'text' ? { ...b, text: truncateText(b.text) } : b
+    ),
+  };
+}
+
+function compressForApi(messages: AnthropicMessage[]): AnthropicMessage[] {
+  // 1. Sliding window — oldest messages dropped first
+  const windowed = messages.length > CTX_MAX_MESSAGES
+    ? messages.slice(-CTX_MAX_MESSAGES)
+    : messages;
+
+  // 2. Walk newest→oldest, counting screenshots; strip images beyond the limit
+  let screenshots = 0;
+  const result = [...windowed].reverse().map(msg => {
+    if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
+
+    const newContent = (msg.content as ContentBlock[]).map(block => {
+      if (block.type !== 'tool_result') return block;
+      const hasImg = Array.isArray(block.content) && block.content.some(b => b.type === 'image');
+      if (hasImg) screenshots++;
+      return compressBlock(block, hasImg && screenshots <= CTX_MAX_SCREENSHOTS);
+    });
+
+    return { ...msg, content: newContent };
+  });
+
+  return result.reverse();
+}
+
 async function* streamMessages(
   body: Record<string, unknown>,
   customFetch: typeof fetch,
@@ -200,9 +271,10 @@ export const useStore = create<Store>((set, get) => ({
           })),
         }));
 
-        // Build history excluding the placeholder we just added
-        const historyMessages = toAnthropicMessages(
-          activeConversation(get)?.messages.slice(0, -1) ?? [],
+        // Build history excluding the placeholder we just added,
+        // then compress (drop old screenshots, truncate big tool results, sliding window)
+        const historyMessages = compressForApi(
+          toAnthropicMessages(activeConversation(get)?.messages.slice(0, -1) ?? []),
         );
 
         const body: Record<string, unknown> = {
@@ -304,7 +376,13 @@ export const useStore = create<Store>((set, get) => ({
         for (const block of toolUseBlocks) {
           try {
             const resultContent = await executeTool(block);
-            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: resultContent });
+            // Truncate oversized text results (e.g. huge accessibility trees) at the source
+            const trimmed = resultContent.map(b =>
+              b.type === 'text' && b.text.length > CTX_MAX_TEXT_CHARS
+                ? { ...b, text: truncateText(b.text) }
+                : b
+            );
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: trimmed });
           } catch (e) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${(e as Error).message}`, is_error: true });
           }
