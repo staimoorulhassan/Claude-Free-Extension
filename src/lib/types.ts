@@ -107,7 +107,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   provider: {
     provider: 'pollinations',
     apiKey: '',
-    defaultModel: 'openai',
+    defaultModel: 'openai-large',
   },
   systemPrompt: '',
   maxTokens: 4096,

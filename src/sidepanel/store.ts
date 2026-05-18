@@ -84,6 +84,28 @@ async function* streamMessages(
   }
 }
 
+async function* streamWithRetry(
+  body: Record<string, unknown>,
+  customFetch: typeof fetch,
+  signal: AbortSignal,
+): AsyncGenerator<AnthropicStreamEvent> {
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    try {
+      for await (const ev of streamMessages(body, customFetch, signal)) yield ev;
+      return;
+    } catch (e) {
+      const err = e as Error;
+      if (err.name === 'AbortError') throw e;
+      if (attempt === maxAttempts - 1) throw e;
+      const msg = err.message;
+      const retryable = msg.includes('400') || msg.includes('429') || msg.includes('500') || msg.includes('503') || msg.includes('Provider');
+      if (!retryable) throw e;
+    }
+  }
+}
+
 export const useStore = create<Store>((set, get) => ({
   conversations: [],
   activeConversationId: null,
@@ -216,7 +238,7 @@ export const useStore = create<Store>((set, get) => ({
         let currentToolBlock: ContentBlock | null = null;
         let stopReason = 'end_turn';
 
-        for await (const event of streamMessages(body, customFetch, abortController.signal)) {
+        for await (const event of streamWithRetry(body, customFetch, abortController.signal)) {
           if (event.type === 'content_block_start') {
             const cb = event.content_block;
             if (cb.type === 'text') {
@@ -299,7 +321,16 @@ export const useStore = create<Store>((set, get) => ({
       }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
-        set({ error: `Error: ${(e as Error).message}` });
+        const raw = (e as Error).message;
+        let display = raw;
+        if (raw.includes('400') || raw.includes('Bad Request') || raw.includes('Provider returned error')) {
+          display = 'Provider returned a 400 error. The model may not support tool use or the conversation is too long. Starting a new chat usually fixes this. You can also switch to Gemini or DeepSeek in Settings for more reliable tool support.';
+        } else if (raw.includes('429')) {
+          display = 'Rate limit reached. Wait a moment then try again, or switch to a different provider in Settings.';
+        } else if (raw.includes('401') || raw.includes('Unauthorized') || raw.includes('Invalid API key')) {
+          display = 'Invalid API key. Check your key in Settings.';
+        }
+        set({ error: display });
       }
     } finally {
       set({ isStreaming: false, abortController: null });
