@@ -1,241 +1,213 @@
-# Universal Provider Extension — Multi-Provider AI Interface
+# Claude Free Extension
 
-The **Universal Provider Extension** transforms the Chrome browser automation extension into a **multi-provider AI interface** supporting any OpenAI-compatible API endpoint while preserving 100% feature parity.
+A Chrome Extension (Manifest V3) that brings a powerful AI side panel to your browser, powered by **any OpenAI-compatible provider** — completely free. No Claude subscription required.
+
+Built from scratch with React + TypeScript + Vite. Routes all requests through a built-in Anthropic↔OpenAI format adapter so you can use Gemini, DeepSeek, Qwen, Groq, Mistral, OpenRouter, Fireworks, Ollama, and more — while keeping the full Claude-style chat experience including **browser computer use**.
+
+---
+
+## Features
+
+- **Multi-provider support** — swap AI providers without touching any code
+- **Browser computer use** — the AI can see, click, type, and navigate your browser in real time using Chrome DevTools Protocol (CDP) for trusted, native-quality input events
+- **Live visual indicators** — animated orange glow border, phantom cursor overlay, and a stop button appear during automation so you always know the AI is active
+- **Streaming responses** — full SSE streaming with incremental text rendering
+- **Tool use / function calling** — Anthropic tool format translated transparently to provider equivalents
+- **Vision / image support** — paste or attach screenshots; base64 and URL images both work
+- **Conversation history** — persisted across sessions in `chrome.storage.local`
+- **Keyboard shortcut** — `Ctrl+E` / `Cmd+E` toggles the side panel
+- **Dark / light / auto theme**
 
 ---
 
 ## Supported Providers
 
-| Provider | Icon | Vision | Tools | Streaming | Authentication |
-|----------|------|--------|-------|-----------|----------------|
-| **Google Gemini** | 🔵 | ✅ | ✅ | ✅ | API Key (aistudio.google.com) |
-| **DeepSeek** | 🔷 | ❌ | ✅ | ✅ | API Key (platform.deepseek.com) |
-| **Alibaba Qwen** | 🟠 | ✅ | ✅ | ✅ | API Key (dashscope-intl.aliyuncs.com) |
-| **MiniMax** | 🟢 | ✅ | ✅ | ✅ | API Key (minimaxi.com) |
-| **Zhipu GLM** | 🟣 | ✅ | ✅ | ✅ | API Key (open.bigmodel.cn) |
-| **OpenAI** | ⚫ | ✅ | ✅ | ✅ | API Key (platform.openai.com) |
-| **Groq** | ⚡ | ❌ | ✅ | ✅ | API Key (console.groq.com) |
-| **Mistral** | 🌊 | ✅ | ✅ | ✅ | API Key (console.mistral.ai) |
-| **Kimi (Moonshot)** | 🌙 | ✅ | ✅ | ✅ | API Key (platform.moonshot.cn) |
-| **Azure OpenAI** | 🔷 | ✅ | ✅ | ✅ | Azure AD/API Key |
-| **Ollama** | 🦙 | ✅ | ✅ | ✅ | None (local) |
-| **LM Studio** | 🖥️ | ❌ | ✅ | ✅ | None (local) |
-| **Pollinations.ai** | 🌸 | ✅ | ✅ | ✅ | Optional (pollinations.ai) |
-| **Custom** | ⚙️ | Configurable | Configurable | Configurable | Varies |
+| Provider | Free Tier | Vision | Tools | Notes |
+|---|---|---|---|---|
+| **Pollinations.ai** | ✅ No key needed | ✅ | ✅ | Default — zero setup |
+| **Google Gemini** | ✅ Generous free quota | ✅ | ✅ | Get key at aistudio.google.com |
+| **DeepSeek** | ✅ Cheap | ❌ | ✅ | platform.deepseek.com |
+| **Alibaba Qwen** | ✅ Free tier | ✅ | ✅ | dashscope-intl.aliyuncs.com |
+| **OpenAI** | ❌ Paid | ✅ | ✅ | platform.openai.com |
+| **OpenRouter** | ✅ Free models available | ✅ | ✅ | openrouter.ai |
+| **Fireworks AI** | ✅ Free credits | ✅ | ✅ | fireworks.ai |
+| **Groq** | ✅ Fast & free | ❌ | ✅ | console.groq.com |
+| **Mistral** | ✅ Free tier | ✅ | ✅ | console.mistral.ai |
+| **Kimi (Moonshot)** | ✅ Free credits | ✅ | ✅ | platform.moonshot.cn |
+| **Ollama** | ✅ Fully local | ✅ | ✅ | No key, runs on your machine |
+| **LM Studio** | ✅ Fully local | ❌ | ✅ | No key, runs on your machine |
+| **Custom** | Varies | Configurable | Configurable | Any OpenAI-compatible endpoint |
 
 ---
 
-## Quick Start
+## Installation
 
-### 1. Install the Extension
+### Option A — Load pre-built (easiest)
 
-Load the extension in Chrome:
-1. Open `chrome://extensions`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select the extension folder
+1. Download the latest release zip from [Releases](../../releases) and unzip it
+2. Open `chrome://extensions` → enable **Developer mode**
+3. Click **Load unpacked** → select the unzipped `dist/` folder
 
-### 2. Configure Your Provider
+### Option B — Build from source
 
-**Method A: Setup UI (Recommended)**
+**Requirements:** Node.js 18+
 
-The extension will automatically prompt you to configure a provider on first launch. The setup UI includes:
-- Provider selection with feature badges (Vision, Tools, Streaming)
-- API key input with helpful hints
-- Advanced settings for custom endpoints
-
-**Method B: Keyboard Shortcut**
-
-Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac) at any time to open the provider selector.
-
-**Method C: Programmatic API**
-
-```javascript
-// Open the provider selector UI
-UniversalProvider.showUI();
-
-// Get current configuration
-const config = UniversalProvider.getConfig();
-console.log(config.provider, config.apiKey);
-
-// Switch provider programmatically
-await UniversalProvider.saveConfig({
-  provider: 'gemini',
-  apiKey: 'YOUR_API_KEY'
-});
+```bash
+git clone https://github.com/staimoorulhassan/Claude-Free-Extension.git
+cd Claude-Free-Extension
+npm install
+npm run build        # outputs to dist/
 ```
 
+Then load `dist/` as an unpacked extension in Chrome.
+
+For live development:
+
+```bash
+npm run dev          # watch mode — rebuilds on save
+```
+
+After each rebuild, click the reload icon on `chrome://extensions`, then reopen the side panel.
+
 ---
 
-## Features at 100% Parity
+## Quick Setup
 
-All extension features work identically regardless of the provider:
+1. Click the extension icon or press **Ctrl+E** to open the side panel
+2. Click the **Settings** gear icon
+3. Select a **Provider** from the dropdown
+4. Enter your **API Key** (leave blank for Pollinations — no key needed)
+5. Optionally set a custom model name
+6. Enable **Computer Use** to let the AI control your browser
 
-| Feature | How It's Preserved |
-|---------|-------------------|
-| **Streaming SSE** | Full `message_start → content_block_delta → message_stop` event translation |
-| **Tool Use** | Anthropic ↔ OpenAI tool format bidirectional translation |
-| **Vision/Images** | Base64 and URL images translated to OpenAI `image_url` format |
-| **System Prompts** | Converted to OpenAI `{role: "system"}` messages |
-| **Stop Sequences** | Mapped to OpenAI `stop` parameter |
-| **Token Usage** | Mapped from `prompt_tokens`/`completion_tokens` |
-| **Extended Thinking** | Passed through as `<thinking>` text blocks |
-| **Multi-turn Conversations** | Full conversation history preserved |
-| **MCP Connectors** | Pass-through (not intercepted) |
-| **OAuth Integration** | Pass-through (not intercepted) |
-| **Analytics** | Pass-through (not intercepted) |
-| **Browser Automation** | Full functionality via tool calling |
+Your API key is stored locally in `chrome.storage.sync` and is **never sent anywhere except directly to your chosen provider**.
+
+---
+
+## Computer Use
+
+When Computer Use is enabled, the AI gains a `computer` tool with these actions:
+
+| Action | Description |
+|---|---|
+| `screenshot` | Capture the current tab |
+| `navigate` | Go to a URL |
+| `read_page` | Get a labelled accessibility tree of the page |
+| `left_click` | Click at coordinates |
+| `click_element` | Click a labelled element by ref ID |
+| `type` | Type text into the focused field |
+| `key` | Press keyboard keys (Enter, Tab, Escape, arrows, ctrl+c…) |
+| `scroll` | Scroll the page |
+| `double_click` | Double-click at coordinates |
+| `right_click` | Right-click at coordinates |
+| `left_click_drag` | Click and drag |
+| `wait` | Pause for a moment |
+
+Input events are dispatched via Chrome DevTools Protocol (`Input.dispatchMouseEvent`, `Input.insertText`, `Input.dispatchKeyEvent`) — these are **trusted events** that work with React apps, SPAs, and any modern web page.
+
+**Example prompt:**
+> *"Go to google.com and search for the best laptop under $1000"*
+
+The AI will navigate, type, and click entirely on its own while you watch via the phantom cursor overlay.
 
 ---
 
 ## Architecture
 
 ```
-sidepanel.html
-  └─ inject-openai-provider.js       ← Universal provider adapter
-       ├─ Provider Registry            ← 13+ provider presets
-       ├─ Login Bypass                 ← Dummy API key injection
-       ├─ Fetch Interceptor            ← /v1/messages translation
-       └─ UI Components                ← Provider selector overlay
-            └─ useStorageState.js      ← Storage state management
-                 └─ mcpPermissions.js  ← MCP permissions
-                      └─ Anthropic SDK
-                           └─ PATCHED fetch()
-                                ├─ /v1/messages → OpenAI provider
-                                ├─ /v1/messages/count_tokens → Stub
-                                ├─ /api/bootstrap/features → Stub
-                                ├─ /api/oauth/profile → Stub
-                                └─ All other URLs → Pass-through
+src/
+├── background.ts          — service worker: CDP computer use, agent lifecycle
+├── content.ts             — minimal page bridge
+├── visual-indicator.ts    — glow border + phantom cursor + stop button (content script)
+├── lib/
+│   ├── openai-compat.ts   — Anthropic↔OpenAI format adapter + provider presets
+│   ├── computer-use.ts    — computer tool schema + background message relay
+│   ├── tools.ts           — tool registry and dispatcher
+│   ├── storage.ts         — chrome.storage helpers
+│   └── types.ts           — shared TypeScript types
+└── sidepanel/
+    ├── store.ts           — Zustand store + agent loop
+    ├── App.tsx            — root component
+    └── components/        — Chat, Message, MessageInput, SettingsPanel, HistoryPanel…
 ```
+
+### Request flow
+
+```
+User message → store.sendMessage()
+    ↓
+createOpenAICompatibleFetch()          ← src/lib/openai-compat.ts
+    ↓
+Intercepts Anthropic-format POST → translates to OpenAI /chat/completions
+    ↓
+OpenAI SSE response → converts back to Anthropic SSE format
+    ↓
+store parses events → Zustand state updates → React re-renders
+```
+
+### Agent loop
+
+The agent runs a `while(true)` loop in `store.ts`:
+1. POST streaming request to `/v1/messages`
+2. Parse SSE events, accumulate text and tool-use blocks
+3. If `stop_reason === 'tool_use'` → execute tool calls via `background.ts` (CDP)
+4. Append tool results as a new user message → loop
+5. Otherwise → break, save conversation
 
 ---
 
-## Provider Configuration API
+## Adding a New Provider
 
-### Configuration Object
+1. Add an entry to the `PROVIDERS` table in [src/lib/openai-compat.ts](src/lib/openai-compat.ts):
 
-```javascript
-const config = {
-  provider: 'gemini',        // Provider key from registry
-  apiKey: 'YOUR_API_KEY',    // Provider API key
-  baseURL: '',               // Optional: override preset URL
-  defaultModel: '',          // Optional: override preset model
-  modelMap: {},              // Optional: additional model mappings
-  supportsVision: true,      // Optional: override capability
-  supportsTools: true,       // Optional: override capability
-  debug: false,              // Enable debug logging
-  extraHeaders: {},          // Custom HTTP headers
-};
+```typescript
+myprovider: {
+  baseURL: 'https://api.myprovider.com/v1',
+  defaultModel: 'my-model-name',
+  supportsVision: true,
+  supportsTools: true,
+  modelMap: {
+    'claude-sonnet-4-6': 'my-model-name',
+    'claude-haiku-4-5':  'my-fast-model',
+  },
+},
 ```
 
-### JavaScript API
+2. Add the provider's API origin to `connect-src` in [manifest.json](manifest.json):
 
-```javascript
-// Load configuration
-const config = await UniversalProvider.loadConfig();
-
-// Save configuration
-await UniversalProvider.saveConfig({
-  provider: 'deepseek',
-  apiKey: 'sk-...'
-});
-
-// Get current provider info
-const provider = UniversalProvider.getInstalledProvider();  // 'deepseek'
-const model = UniversalProvider.getInstalledModel();        // 'deepseek-chat'
-
-// Access provider registry
-const geminiInfo = UniversalProvider.registry.gemini;
-console.log(geminiInfo.supportsVision, geminiInfo.modelMap);
-```
-
----
-
-## Custom Provider Setup
-
-For any OpenAI-compatible endpoint not in the registry:
-
-1. Open the provider selector (`Ctrl+Shift+P`)
-2. Select "Custom Endpoint" ⚙️
-3. Enter:
-   - **Base URL**: Your API endpoint (e.g., `https://api.mycorp.com/v1`)
-   - **API Key**: Your authentication key
-   - **Default Model**: The model name to use
-   - **Model Map**: JSON mapping of Claude model names to your model names
-
-Example model map:
 ```json
-{
-  "claude-sonnet-4-6": "my-model-v1",
-  "claude-haiku-4-5": "my-model-fast"
-}
+"connect-src": "... https://api.myprovider.com ..."
+```
+
+3. Rebuild: `npm run build`
+
+---
+
+## Security
+
+- API keys are stored in `chrome.storage.sync` (encrypted by Chrome, synced across your devices)
+- Keys are transmitted only to your chosen provider's API endpoint — never to any third party
+- No telemetry, no analytics, no remote logging
+- Computer use runs entirely locally via Chrome's native debugger API
+
+---
+
+## Privacy
+
+This extension does not collect, transmit, or store any personal data on any server. All data (conversations, settings, API keys) stays on your local machine or in your Chrome profile sync.
+
+---
+
+## Development Commands
+
+```bash
+npm run dev          # build + watch
+npm run build        # production build → dist/
+npm run type-check   # TypeScript check (no emit)
 ```
 
 ---
 
-## Local Deployment
+## License
 
-### Ollama
-
-1. Install Ollama from [ollama.com](https://ollama.com)
-2. Pull a model: `ollama pull llama3.2`
-3. Start Ollama server: `ollama serve`
-4. Select "Ollama (Local)" in the extension - no key needed
-
-### LM Studio
-
-1. Download LM Studio from [lmstudio.ai](https://lmstudio.ai)
-2. Load a model and start the local server (default port 1234)
-3. Select "LM Studio (Local)" in the extension - no key needed
-
----
-
-## Troubleshooting
-
-### Extension shows "No provider configured"
-
-Press `Ctrl+Shift+P` to open the provider selector and configure an API key.
-
-### API errors after switching providers
-
-Check the browser console for `[UniversalProvider]` logs. Enable debug mode to see full request/response details.
-
-### Model not found errors
-
-The provider may not have the mapped model. Check the provider's documentation and update the model mapping in advanced settings.
-
-### Tools not working
-
-Verify the provider supports function calling. Some providers (DeepSeek, Groq, LM Studio) may have limited tool support.
-
-### Vision not working
-
-Verify the provider supports vision. Some providers (DeepSeek, Groq, LM Studio) don't support image inputs.
-
----
-
-## Security Notes
-
-- API keys are stored in `chrome.storage.local` (encrypted by Chrome)
-- Keys are never sent to any server except the configured provider
-- Dummy Anthropic API key is injected to bypass login without network calls
-- All OAuth/MCP/analytics traffic passes through unmodified
-
----
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `inject-openai-provider.js` | Main adapter with UI, injected into sidepanel |
-| `openai-compat-fetch.js` | Standalone ESM module for external use |
-| `sidepanel.html` | Extension UI (modified to include adapter) |
-
----
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+P` / `Cmd+Shift+P` | Open provider selector |
-| `Ctrl+E` / `Cmd+E` | Toggle side panel (built-in) |
+MIT — do whatever you want with it.
