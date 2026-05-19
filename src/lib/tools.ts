@@ -12,7 +12,7 @@ export function getEnabledTools(computerUseEnabled: boolean): AnthropicTool[] {
 export async function executeTool(block: ToolUseBlock): Promise<ContentBlock[]> {
   switch (block.name) {
     case 'computer': {
-      const results = await executeComputerAction(block.input as ComputerAction);
+      const results = await executeComputerAction(block.input as unknown as ComputerAction);
       return results.map(r => {
         if (r.type === 'image' && r.source) {
           return { type: 'image', source: r.source } as ContentBlock;

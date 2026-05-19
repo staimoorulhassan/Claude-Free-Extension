@@ -1,25 +1,42 @@
 import type { AppSettings, Conversation } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
-// Models that were bad defaults and should be auto-upgraded
 const STALE_POLLINATIONS_MODELS = new Set(['openai', 'gemini-fast', 'mistral', 'gemini']);
 
 export async function getSettings(): Promise<AppSettings> {
-  const result = await chrome.storage.sync.get('settings');
+  const result = await chrome.storage.sync.get(['settings', 'migrations']);
   const saved = result['settings'] as Partial<AppSettings> | undefined;
+  const migrations = (result['migrations'] ?? {}) as Record<string, boolean>;
+
   const settings: AppSettings = {
     ...DEFAULT_SETTINGS,
     ...saved,
     provider: { ...DEFAULT_SETTINGS.provider, ...(saved?.provider ?? {}) },
   };
-  // Auto-upgrade stale Pollinations model names to openai-large (GPT-4o)
+
+  let needsSave = false;
+  const newMigrations = { ...migrations };
+
+  // Upgrade stale Pollinations model names
   if (
     settings.provider.provider === 'pollinations' &&
     STALE_POLLINATIONS_MODELS.has(settings.provider.defaultModel ?? '')
   ) {
     settings.provider.defaultModel = 'openai-large';
-    saveSettings(settings).catch(() => {});
+    needsSave = true;
   }
+
+  // Issue 2: one-time migration — enable computer use (was false by old default)
+  if (!migrations.computerUseEnabled) {
+    settings.computerUseEnabled = true;
+    newMigrations.computerUseEnabled = true;
+    needsSave = true;
+  }
+
+  if (needsSave) {
+    chrome.storage.sync.set({ settings, migrations: newMigrations }).catch(() => {});
+  }
+
   return settings;
 }
 

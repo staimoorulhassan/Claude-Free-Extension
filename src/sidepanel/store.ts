@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent } from '@/lib/types';
+import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent, ToolUseBlock } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
 import { getSettings, saveSettings, getConversations, saveConversations, generateId, generateTitle } from '@/lib/storage';
 import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
@@ -45,13 +45,14 @@ function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
 }
 
 // ── Context compression ────────────────────────────────────────────────────────
-// Screenshots are base64 PNGs (~50-200 KB each as text). Sending 3+ in history
-// easily pushes past any provider's token limit and causes 400 errors.
-// This runs before every API call — it never touches the stored conversation.
+// Issue 11: balanced limits — enough context for complex tasks, not so much
+// it blows provider token limits.  Runs before every API call; never mutates
+// the stored conversation.
 
-const CTX_MAX_MESSAGES = 20;       // sliding window (10 user+assistant pairs)
-const CTX_MAX_SCREENSHOTS = 1;     // only the latest screenshot kept verbatim
-const CTX_MAX_TEXT_CHARS = 4000;   // truncate long read_page / tool results
+const CTX_MAX_MESSAGES = 40;       // sliding window (20 rounds)
+const CTX_MAX_SCREENSHOTS = 2;     // keep last 2 screenshots verbatim
+const CTX_MAX_TEXT_CHARS = 8000;   // enough for most accessibility trees
+const CTX_ALWAYS_KEEP = 6;         // last 3 rounds always sent uncompressed
 
 function truncateText(text: string): string {
   return text.length > CTX_MAX_TEXT_CHARS
@@ -61,28 +62,21 @@ function truncateText(text: string): string {
 
 function compressBlock(block: ContentBlock, keepImage: boolean): ContentBlock {
   if (block.type !== 'tool_result') return block;
-
-  // String content — just truncate
   if (typeof block.content === 'string') {
     return { ...block, content: truncateText(block.content) };
   }
-
   if (!Array.isArray(block.content)) return block;
 
   const hasImage = block.content.some(b => b.type === 'image');
-
   if (hasImage && !keepImage) {
-    // Drop the screenshot, keep any text parts
     const textParts = block.content.filter(b => b.type === 'text');
     return {
       ...block,
       content: textParts.length > 0
         ? textParts.map(b => b.type === 'text' ? { ...b, text: truncateText(b.text) } : b)
-        : [{ type: 'text' as const, text: '[screenshot removed — keeping only last 2 in context]' }],
+        : [{ type: 'text' as const, text: '[screenshot removed — older than last 2]' }],
     };
   }
-
-  // Keep image but truncate any text siblings
   return {
     ...block,
     content: block.content.map(b =>
@@ -92,27 +86,63 @@ function compressBlock(block: ContentBlock, keepImage: boolean): ContentBlock {
 }
 
 function compressForApi(messages: AnthropicMessage[]): AnthropicMessage[] {
-  // 1. Sliding window — oldest messages dropped first
-  const windowed = messages.length > CTX_MAX_MESSAGES
-    ? messages.slice(-CTX_MAX_MESSAGES)
-    : messages;
+  // Issue 10: drop empty assistant placeholder messages (failed streams)
+  const noEmpty = messages.filter(msg =>
+    !(msg.role === 'assistant' && Array.isArray(msg.content) && msg.content.length === 0)
+  );
 
-  // 2. Walk newest→oldest, counting screenshots; strip images beyond the limit
+  // Sliding window
+  const windowed = noEmpty.length > CTX_MAX_MESSAGES
+    ? noEmpty.slice(-CTX_MAX_MESSAGES)
+    : noEmpty;
+
+  // Split: always-keep tail vs compressible head
+  const cutoff = Math.max(0, windowed.length - CTX_ALWAYS_KEEP);
+  const head = windowed.slice(0, cutoff);
+  const tail = windowed.slice(cutoff);
+
+  // Compress only the head — walk newest→oldest to count screenshots correctly
   let screenshots = 0;
-  const result = [...windowed].reverse().map(msg => {
+  const compressedHead = [...head].reverse().map(msg => {
     if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
-
     const newContent = (msg.content as ContentBlock[]).map(block => {
       if (block.type !== 'tool_result') return block;
       const hasImg = Array.isArray(block.content) && block.content.some(b => b.type === 'image');
       if (hasImg) screenshots++;
       return compressBlock(block, hasImg && screenshots <= CTX_MAX_SCREENSHOTS);
     });
-
     return { ...msg, content: newContent };
-  });
+  }).reverse();
 
-  return result.reverse();
+  return [...compressedHead, ...tail];
+}
+
+// Issue 16: generate a short title for the conversation via the provider
+async function generateConversationTitle(
+  userText: string,
+  aiText: string,
+  customFetch: typeof fetch,
+  settings: AppSettings,
+): Promise<string> {
+  const resp = await customFetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': 'sk-ant-compat',
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: settings.provider.defaultModel ?? 'openai-large',
+      max_tokens: 12,
+      messages: [{
+        role: 'user',
+        content: `Write a 3-5 word title for this chat. Reply with ONLY the title, no quotes.\nUser: ${userText.slice(0, 150)}\nAI: ${aiText.slice(0, 150)}`,
+      }],
+    }),
+  });
+  if (!resp.ok) return '';
+  const data = await resp.json() as { content?: Array<{ type: string; text?: string }> };
+  return (data.content?.[0]?.text ?? '').trim().replace(/^["']|["']$/g, '').slice(0, 60);
 }
 
 async function* streamMessages(
@@ -234,6 +264,9 @@ export const useStore = create<Store>((set, get) => ({
     if (!get().activeConversationId) get().newConversation();
     const convId = get().activeConversationId!;
 
+    // Issue 16: capture before we add the user message so we can detect first exchange
+    const isFirstExchange = (activeConversation(get)?.messages.length ?? 0) === 0;
+
     // Add the user message first, before the loop
     const userMessage: Message = { id: generateId(), role: 'user', content: userContent, timestamp: Date.now() };
     const firstText = (userContent.find(b => b.type === 'text') as { text?: string } | undefined)?.text ?? '';
@@ -287,30 +320,39 @@ export const useStore = create<Store>((set, get) => ({
           max_tokens: settings.maxTokens,
           messages: historyMessages,
         };
+        // Issue 3: system prompt written to override model's own training about
+        // "I can't browse the web". Uses imperative language + explicit denial
+        // prevention to maximise compliance across GPT-4o, Gemini, Llama etc.
         const effectiveSystem = settings.computerUseEnabled
           ? [
-              'You are an AI browser automation agent with FULL CONTROL of the user\'s active browser tab.',
-              'You have a `computer` tool. USE IT immediately for every web task. NEVER say you cannot access the browser.',
+              'You are a browser automation agent. You have a `computer` tool that gives you FULL, REAL control of the user\'s browser.',
+              'The computer tool is ALREADY connected and working. Do NOT say you cannot access the browser — you can and must.',
               '',
-              'EFFICIENCY RULES (critical — context is limited):',
-              '- Prefer read_page + click_element over screenshot+click. Only take a screenshot when you genuinely need to SEE the page visually.',
-              '- Do NOT take a screenshot after every single action. Take one at the start, one to verify the final result.',
-              '- Chain multiple actions in one turn when possible (navigate → read_page → click_element → type → key).',
-              '- If read_page gives you the element you need, use it directly — no screenshot needed.',
+              'MANDATORY: for ANY task involving a website, URL, search, or web content — call the computer tool immediately.',
+              'Do NOT explain what you will do. Do NOT ask for confirmation. Just call the tool.',
               '',
-              'WORKFLOW:',
-              '1. action="navigate", url="https://..." (NEVER click the address bar)',
-              '2. action="read_page" to get labelled elements like button "Search" [ref_4]',
-              '3. action="click_element", ref_id="ref_4" — or left_click with coordinates',
-              '4. action="type", text="..." then action="key", text="Return"',
-              '5. action="screenshot" only to verify the final result or when read_page is insufficient',
+              'TOOL ACTIONS (use these in sequence):',
+              '  navigate   → go to a URL',
+              '  read_page  → get labelled interactive elements (buttons, inputs, links) with ref IDs',
+              '  click_element → click by ref ID from read_page',
+              '  type       → type text into focused input',
+              '  key        → press Return/Enter/Escape/Tab/arrow keys',
+              '  screenshot → see the page visually (use sparingly — prefer read_page)',
+              '  scroll     → scroll up/down/left/right',
+              '  wait       → wait N seconds for page to load',
               '',
-              'ALWAYS start immediately. Never ask for permission.',
-              settings.systemPrompt ? `\nAdditional instructions:\n${settings.systemPrompt}` : '',
+              'EFFICIENCY: prefer read_page → click_element over screenshot → coordinate click.',
+              'Only take a screenshot when you must SEE something (images, charts, CAPTCHAs).',
+              'After navigate, always call read_page or wait before any click.',
+              '',
+              settings.systemPrompt ? `User instructions: ${settings.systemPrompt}` : '',
             ].join('\n').trim()
           : settings.systemPrompt;
         if (effectiveSystem) body['system'] = effectiveSystem;
-        if (tools.length > 0) body['tools'] = tools;
+        if (tools.length > 0) {
+          body['tools'] = tools;
+          body['tool_choice'] = { type: 'auto' };
+        }
 
         // Stream response
         let textBuf = '';
@@ -350,12 +392,13 @@ export const useStore = create<Store>((set, get) => ({
               finishedBlocks.push({ type: 'text', text: textBuf });
               textBuf = '';
             } else if (currentToolBlock?.type === 'tool_use') {
+              const tb = currentToolBlock as ToolUseBlock;
               try {
-                (currentToolBlock as Record<string, unknown>)['input'] = JSON.parse(currentToolInput || '{}');
+                tb.input = JSON.parse(currentToolInput || '{}') as Record<string, unknown>;
               } catch {
-                (currentToolBlock as Record<string, unknown>)['input'] = {};
+                tb.input = {};
               }
-              finishedBlocks.push(currentToolBlock);
+              finishedBlocks.push(tb);
               currentToolBlock = null;
               currentToolInput = '';
             }
@@ -377,7 +420,7 @@ export const useStore = create<Store>((set, get) => ({
 
         if (stopReason !== 'tool_use') break;
 
-        const toolUseBlocks = finishedBlocks.filter(b => b.type === 'tool_use') as import('@/lib/types').ToolUseBlock[];
+        const toolUseBlocks = finishedBlocks.filter(b => b.type === 'tool_use') as ToolUseBlock[];
         if (!toolUseBlocks.length) break;
 
         // Execute tool calls
@@ -385,6 +428,41 @@ export const useStore = create<Store>((set, get) => ({
         for (const block of toolUseBlocks) {
           try {
             const resultContent = await executeTool(block);
+
+            // Issue 19: when click_element says the element wasn't found, auto-call
+            // read_page so the model immediately gets the current page state
+            if (block.name === 'computer') {
+              const act = (block.input as Record<string, unknown>).action as string;
+              if (act === 'click_element') {
+                const firstText = resultContent.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
+                if (firstText && (firstText.text.includes('not found') || firstText.text.includes('no longer'))) {
+                  try {
+                    const readBlock: ToolUseBlock = {
+                      type: 'tool_use',
+                      id: block.id + '_auto_read',
+                      name: 'computer',
+                      input: { action: 'read_page', filter: 'interactive' },
+                    };
+                    const readResult = await executeTool(readBlock);
+                    const readText = readResult
+                      .filter(b => b.type === 'text')
+                      .map(b => (b as { type: 'text'; text: string }).text)
+                      .join('');
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: block.id,
+                      content: [{
+                        type: 'text',
+                        text: `${firstText.text}\n\n[Auto read_page after element not found]\n${truncateText(readText)}`,
+                      }],
+                      is_error: true,
+                    });
+                    continue;
+                  } catch { /* fall through to normal result */ }
+                }
+              }
+            }
+
             // Truncate oversized text results (e.g. huge accessibility trees) at the source
             const trimmed = resultContent.map(b =>
               b.type === 'text' && b.text.length > CTX_MAX_TEXT_CHARS
@@ -408,12 +486,29 @@ export const useStore = create<Store>((set, get) => ({
       }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
+        // Issue 10: if the stream failed before producing any content, the
+        // empty assistant placeholder is still in history — remove it so it
+        // doesn't get sent as an invalid empty message on the next request
+        set(s => {
+          const conv = s.conversations.find(c => c.id === convId);
+          if (!conv) return s;
+          const last = conv.messages[conv.messages.length - 1];
+          if (last?.role === 'assistant' && last.content.length === 0) {
+            return {
+              conversations: patchConversation(s.conversations, convId, c => ({
+                ...c, messages: c.messages.slice(0, -1),
+              })),
+            };
+          }
+          return s;
+        });
+
         const raw = (e as Error).message;
         let display = raw;
         if (raw.includes('400') || raw.includes('Bad Request') || raw.includes('Provider returned error')) {
-          display = 'Provider returned a 400 error. The model may not support tool use or the conversation is too long. Starting a new chat usually fixes this. You can also switch to Gemini or DeepSeek in Settings for more reliable tool support.';
+          display = 'Provider error (400). Try a new chat, or switch to Gemini / DeepSeek in Settings for more reliable tool support.';
         } else if (raw.includes('429')) {
-          display = 'Rate limit reached. Wait a moment then try again, or switch to a different provider in Settings.';
+          display = 'Rate limit reached. Wait a moment then try again, or switch provider in Settings.';
         } else if (raw.includes('401') || raw.includes('Unauthorized') || raw.includes('Invalid API key')) {
           display = 'Invalid API key. Check your key in Settings.';
         }
@@ -422,6 +517,35 @@ export const useStore = create<Store>((set, get) => ({
     } finally {
       set({ isStreaming: false, abortController: null });
       saveConversations(get().conversations);
+
+      // Issue 16: fire-and-forget AI title generation after the first exchange
+      if (isFirstExchange) {
+        const conv = get().conversations.find(c => c.id === convId);
+        if (conv) {
+          const uText = (userContent.find(b => b.type === 'text') as { text?: string } | undefined)?.text ?? '';
+          const aText = conv.messages
+            .filter(m => m.role === 'assistant')
+            .flatMap(m => m.content
+              .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+              .map(b => b.text)
+            )
+            .join(' ')
+            .slice(0, 300);
+          if (uText || aText) {
+            generateConversationTitle(uText, aText, customFetch, settings)
+              .then(title => {
+                if (title) {
+                  set(s => ({
+                    conversations: patchConversation(s.conversations, convId, c => ({ ...c, title })),
+                  }));
+                  saveConversations(get().conversations);
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
       if (settings.computerUseEnabled) {
         chrome.runtime.sendMessage({ type: 'AGENT_STOPPED' }).catch(() => {});
       }

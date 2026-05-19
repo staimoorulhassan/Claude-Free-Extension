@@ -234,7 +234,8 @@ function messageToOAI(msg: { role: string; content: unknown }, vision: boolean):
         type: 'function' as const,
         function: { name: b.name as string, arguments: typeof b.input === 'string' ? b.input : JSON.stringify(b.input ?? {}) },
       }));
-      if (!m.content) m.content = null;
+      // Issue 9: some providers (Groq, Mistral) reject content:null — use empty string
+      if (!m.content) m.content = '';
     }
     return [m];
   }
