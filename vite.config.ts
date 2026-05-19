@@ -13,6 +13,11 @@ function copyStaticFiles() {
       }
       // accessibility-tree.js runs in MAIN world — copy the original compiled file
       fs.copyFileSync('assets/accessibility-tree.js-DxrE0N5Q.js', 'dist/accessibility-tree.js');
+      // theme-init.js: sets data-mode before React mounts (avoids flash of wrong theme)
+      if (fs.existsSync('theme-init.js')) fs.copyFileSync('theme-init.js', 'dist/theme-init.js');
+      // inject-openai-provider.js: legacy global-fetch adapter (kept for reference;
+      // the active extension uses the bundled openai-compat.ts instead)
+      if (fs.existsSync('inject-openai-provider.js')) fs.copyFileSync('inject-openai-provider.js', 'dist/inject-openai-provider.js');
       if (fs.existsSync('sounds')) {
         fs.mkdirSync('dist/sounds', { recursive: true });
         for (const f of fs.readdirSync('sounds')) {
