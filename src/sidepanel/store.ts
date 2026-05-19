@@ -49,9 +49,9 @@ function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
 // easily pushes past any provider's token limit and causes 400 errors.
 // This runs before every API call — it never touches the stored conversation.
 
-const CTX_MAX_MESSAGES = 30;       // sliding window (15 user+assistant pairs)
-const CTX_MAX_SCREENSHOTS = 2;     // only last 2 screenshots kept verbatim
-const CTX_MAX_TEXT_CHARS = 6000;   // truncate long read_page / tool results
+const CTX_MAX_MESSAGES = 20;       // sliding window (10 user+assistant pairs)
+const CTX_MAX_SCREENSHOTS = 1;     // only the latest screenshot kept verbatim
+const CTX_MAX_TEXT_CHARS = 4000;   // truncate long read_page / tool results
 
 function truncateText(text: string): string {
   return text.length > CTX_MAX_TEXT_CHARS
@@ -259,7 +259,12 @@ export const useStore = create<Store>((set, get) => ({
 
     try {
       // Agent loop — each iteration gets its own unique assistantId
+      let agentIteration = 0;
       while (true) {
+        if (agentIteration++ >= 25) {
+          set({ error: 'Agent stopped after 25 tool rounds. Try breaking the task into smaller steps.' });
+          break;
+        }
         // Fresh ID for THIS turn's assistant message
         const assistantId = generateId();
 
@@ -285,18 +290,22 @@ export const useStore = create<Store>((set, get) => ({
         const effectiveSystem = settings.computerUseEnabled
           ? [
               'You are an AI browser automation agent with FULL CONTROL of the user\'s active browser tab.',
-              'You have a `computer` tool. USE IT for every web task. Never say you cannot access the browser.',
+              'You have a `computer` tool. USE IT immediately for every web task. NEVER say you cannot access the browser.',
               '',
-              'WORKFLOW for any request involving websites:',
-              '1. action="navigate", url="https://..." to go to a URL (NEVER click the address bar)',
-              '2. action="screenshot" to see the current page',
-              '3. action="read_page" to get labelled elements (e.g. button "Search" [ref_4])',
-              '4. action="click_element", ref_id="ref_4" OR action="left_click", coordinate=[x,y]',
-              '5. action="type", text="..." to type into the focused field',
-              '6. action="key", text="Return" to submit',
-              '7. action="screenshot" again to verify the result',
+              'EFFICIENCY RULES (critical — context is limited):',
+              '- Prefer read_page + click_element over screenshot+click. Only take a screenshot when you genuinely need to SEE the page visually.',
+              '- Do NOT take a screenshot after every single action. Take one at the start, one to verify the final result.',
+              '- Chain multiple actions in one turn when possible (navigate → read_page → click_element → type → key).',
+              '- If read_page gives you the element you need, use it directly — no screenshot needed.',
               '',
-              'ALWAYS start browser tasks immediately — do not ask for permission or clarification.',
+              'WORKFLOW:',
+              '1. action="navigate", url="https://..." (NEVER click the address bar)',
+              '2. action="read_page" to get labelled elements like button "Search" [ref_4]',
+              '3. action="click_element", ref_id="ref_4" — or left_click with coordinates',
+              '4. action="type", text="..." then action="key", text="Return"',
+              '5. action="screenshot" only to verify the final result or when read_page is insufficient',
+              '',
+              'ALWAYS start immediately. Never ask for permission.',
               settings.systemPrompt ? `\nAdditional instructions:\n${settings.systemPrompt}` : '',
             ].join('\n').trim()
           : settings.systemPrompt;

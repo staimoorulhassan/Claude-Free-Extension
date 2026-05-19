@@ -1,14 +1,26 @@
 import type { AppSettings, Conversation } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
+// Models that were bad defaults and should be auto-upgraded
+const STALE_POLLINATIONS_MODELS = new Set(['openai', 'gemini-fast', 'mistral', 'gemini']);
+
 export async function getSettings(): Promise<AppSettings> {
   const result = await chrome.storage.sync.get('settings');
   const saved = result['settings'] as Partial<AppSettings> | undefined;
-  return {
+  const settings: AppSettings = {
     ...DEFAULT_SETTINGS,
     ...saved,
     provider: { ...DEFAULT_SETTINGS.provider, ...(saved?.provider ?? {}) },
   };
+  // Auto-upgrade stale Pollinations model names to openai-large (GPT-4o)
+  if (
+    settings.provider.provider === 'pollinations' &&
+    STALE_POLLINATIONS_MODELS.has(settings.provider.defaultModel ?? '')
+  ) {
+    settings.provider.defaultModel = 'openai-large';
+    saveSettings(settings).catch(() => {});
+  }
+  return settings;
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
