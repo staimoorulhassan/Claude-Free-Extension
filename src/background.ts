@@ -130,9 +130,18 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
     case 'screenshot': {
       await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' });
       await new Promise(r => setTimeout(r, 100));
-      const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
+      let base64: string;
+      try {
+        // CDP screenshot uses the already-attached debugger — no activeTab permission needed
+        const shot = await cdp(tabId, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }) as { data: string };
+        base64 = shot.data;
+      } catch {
+        // Fallback: captureVisibleTab with explicit windowId (requires <all_urls>)
+        const tab = await chrome.tabs.get(tabId);
+        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'png' });
+        base64 = dataUrl.split(',')[1] ?? '';
+      }
       await broadcastToWebTabs({ type: 'SHOW_AFTER_TOOL_USE' });
-      const base64 = dataUrl.split(',')[1] ?? '';
       return [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64 } }];
     }
 
