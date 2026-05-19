@@ -31,23 +31,43 @@ async function getWebTabId(): Promise<number> {
   return tab.id;
 }
 
+// Issue 5+8: enable Page domain after attach; retry on transient detach errors
 async function ensureDebugger(tabId: number): Promise<void> {
   if (attachedTabId === tabId) return;
   if (attachedTabId !== null && attachedTabId !== tabId) {
     try { await chrome.debugger.detach({ tabId: attachedTabId }); } catch { /* ignore */ }
     attachedTabId = null;
   }
-  try {
-    await chrome.debugger.attach({ tabId }, '1.3');
-  } catch (e) {
-    if (!(e as Error).message?.toLowerCase().includes('already attached')) throw e;
+  // Issue 8: retry attach — handles pages that detach mid-sequence (redirects etc.)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await chrome.debugger.attach({ tabId }, '1.3');
+      break;
+    } catch (e) {
+      if ((e as Error).message?.toLowerCase().includes('already attached')) break;
+      if (attempt === 2) throw e;
+      await new Promise(r => setTimeout(r, 500));
+    }
   }
   attachedTabId = tabId;
+  // Issue 5: enable Page domain so Page.captureScreenshot and Page.loadEventFired work
+  try { await chrome.debugger.sendCommand({ tabId }, 'Page.enable'); } catch { /* ignore */ }
 }
 
+// Issue 8: retry CDP commands on transient detach/attach errors
 async function cdp(tabId: number, method: string, params?: Record<string, unknown>): Promise<unknown> {
-  await ensureDebugger(tabId);
-  return chrome.debugger.sendCommand({ tabId }, method, params);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await ensureDebugger(tabId);
+      return await chrome.debugger.sendCommand({ tabId }, method, params);
+    } catch (e) {
+      const msg = (e as Error).message ?? '';
+      const isDetach = msg.includes('detach') || msg.includes('no such') || msg.includes('No target');
+      if (attempt === 1 || !isDetach) throw e;
+      attachedTabId = null; // force re-attach next attempt
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -69,6 +89,14 @@ async function broadcastToWebTabs(message: Record<string, unknown>): Promise<voi
   for (const tab of tabs) {
     if (tab.id) chrome.tabs.sendMessage(tab.id, message).catch(() => {});
   }
+}
+
+// Issue 6: ensure tab is active before dispatching input events
+async function activateTab(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.update(tabId, { active: true });
+    await new Promise(r => setTimeout(r, 50));
+  } catch { /* ignore if tab is gone */ }
 }
 
 // ── Key mapping ───────────────────────────────────────────────────────────────
@@ -129,20 +157,41 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
 
     case 'screenshot': {
       await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' });
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 150));
+
       let base64: string;
+      let mediaType = 'image/jpeg';
       try {
-        // CDP screenshot uses the already-attached debugger — no activeTab permission needed
-        const shot = await cdp(tabId, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }) as { data: string };
+        // Issue 4: get DPR and viewport so we can normalise to CSS pixels
+        const metrics = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => ({
+            dpr: window.devicePixelRatio || 1,
+            w: document.documentElement.clientWidth || window.innerWidth,
+            h: document.documentElement.clientHeight || window.innerHeight,
+          }),
+        });
+        const { dpr = 1, w = 1280, h = 800 } =
+          (metrics[0]?.result as { dpr: number; w: number; h: number }) ?? {};
+
+        // clip.scale = 1/dpr forces output at CSS-pixel resolution so the
+        // coordinates the AI sends back match what CDP Input.* expects
+        const shot = await cdp(tabId, 'Page.captureScreenshot', {
+          format: 'jpeg',
+          quality: 70,
+          captureBeyondViewport: false,
+          clip: { x: 0, y: 0, width: w, height: h, scale: 1 / dpr },
+        }) as { data: string };
         base64 = shot.data;
       } catch {
-        // Fallback: captureVisibleTab with explicit windowId (requires <all_urls>)
+        // Fallback: captureVisibleTab with explicit windowId (avoids activeTab issue)
         const tab = await chrome.tabs.get(tabId);
-        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'png' });
+        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'jpeg', quality: 70 });
         base64 = dataUrl.split(',')[1] ?? '';
       }
+
       await broadcastToWebTabs({ type: 'SHOW_AFTER_TOOL_USE' });
-      return [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64 } }];
+      return [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } }];
     }
 
     case 'navigate': {
@@ -153,11 +202,27 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
         attachedTabId = null;
       }
       await chrome.tabs.update(tabId, { url });
-      await new Promise(r => setTimeout(r, 2500));
+
+      // Issue 7: wait for the tab to finish loading instead of a fixed sleep
+      await new Promise<void>(resolve => {
+        const MAX_WAIT = 15000;
+        const timer = setTimeout(resolve, MAX_WAIT);
+        const listener = (updatedId: number, info: chrome.tabs.TabChangeInfo) => {
+          if (updatedId === tabId && info.status === 'complete') {
+            clearTimeout(timer);
+            chrome.tabs.onUpdated.removeListener(listener);
+            resolve();
+          }
+        };
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+      // Extra settle for JS frameworks to hydrate
+      await new Promise(r => setTimeout(r, 800));
       return [{ type: 'text', text: `Navigated to ${url}` }];
     }
 
     case 'left_click': {
+      await activateTab(tabId); // Issue 6
       const [x, y] = action.coordinate ?? [0, 0];
       await broadcastToWebTabs({ type: 'UPDATE_PHANTOM_CURSOR', x, y });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved',    x, y, button: 'none',  modifiers: 0 });
@@ -167,6 +232,7 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
     }
 
     case 'double_click': {
+      await activateTab(tabId); // Issue 6
       const [x, y] = action.coordinate ?? [0, 0];
       await broadcastToWebTabs({ type: 'UPDATE_PHANTOM_CURSOR', x, y });
       for (const clickCount of [1, 2]) {
@@ -177,6 +243,7 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
     }
 
     case 'right_click': {
+      await activateTab(tabId); // Issue 6
       const [x, y] = action.coordinate ?? [0, 0];
       await broadcastToWebTabs({ type: 'UPDATE_PHANTOM_CURSOR', x, y });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed',  x, y, button: 'right', clickCount: 1, modifiers: 0 });
@@ -185,6 +252,7 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
     }
 
     case 'middle_click': {
+      await activateTab(tabId); // Issue 6
       const [x, y] = action.coordinate ?? [0, 0];
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed',  x, y, button: 'middle', clickCount: 1, modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'middle', clickCount: 1, modifiers: 0 });
@@ -192,11 +260,13 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
     }
 
     case 'type': {
+      await activateTab(tabId); // Issue 6
       await cdp(tabId, 'Input.insertText', { text: action.text ?? '' });
       return [{ type: 'text', text: `Typed: "${action.text}"` }];
     }
 
     case 'key': {
+      await activateTab(tabId); // Issue 6
       const keyStr = action.text ?? '';
       const isCtrl  = /ctrl\+/i.test(keyStr);
       const isShift = /shift\+/i.test(keyStr);
@@ -224,6 +294,7 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
     }
 
     case 'left_click_drag': {
+      await activateTab(tabId); // Issue 6
       const [sx, sy] = action.start_coordinate ?? [0, 0];
       const [ex, ey] = action.coordinate ?? [0, 0];
       await broadcastToWebTabs({ type: 'UPDATE_PHANTOM_CURSOR', x: sx, y: sy });
@@ -260,6 +331,7 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
     }
 
     case 'click_element': {
+      await activateTab(tabId); // Issue 6
       const refId = action.ref_id ?? '';
       const results = await chrome.scripting.executeScript({
         target: { tabId },
@@ -320,7 +392,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === 'STOP_AGENT') {
-    // Stop button clicked in page — relay to side panel
     chrome.runtime.sendMessage({ type: 'STOP_GENERATION' }).catch(() => {});
     return false;
   }
