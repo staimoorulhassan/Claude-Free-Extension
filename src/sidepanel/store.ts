@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent } from '@/lib/types';
+import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent, ToolUseBlock } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
 import { getSettings, saveSettings, getConversations, saveConversations, generateId, generateTitle } from '@/lib/storage';
 import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
@@ -115,6 +115,34 @@ function compressForApi(messages: AnthropicMessage[]): AnthropicMessage[] {
   }).reverse();
 
   return [...compressedHead, ...tail];
+}
+
+// Issue 16: generate a short title for the conversation via the provider
+async function generateConversationTitle(
+  userText: string,
+  aiText: string,
+  customFetch: typeof fetch,
+  settings: AppSettings,
+): Promise<string> {
+  const resp = await customFetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': 'sk-ant-compat',
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: settings.provider.defaultModel ?? 'openai-large',
+      max_tokens: 12,
+      messages: [{
+        role: 'user',
+        content: `Write a 3-5 word title for this chat. Reply with ONLY the title, no quotes.\nUser: ${userText.slice(0, 150)}\nAI: ${aiText.slice(0, 150)}`,
+      }],
+    }),
+  });
+  if (!resp.ok) return '';
+  const data = await resp.json() as { content?: Array<{ type: string; text?: string }> };
+  return (data.content?.[0]?.text ?? '').trim().replace(/^["']|["']$/g, '').slice(0, 60);
 }
 
 async function* streamMessages(
@@ -235,6 +263,9 @@ export const useStore = create<Store>((set, get) => ({
 
     if (!get().activeConversationId) get().newConversation();
     const convId = get().activeConversationId!;
+
+    // Issue 16: capture before we add the user message so we can detect first exchange
+    const isFirstExchange = (activeConversation(get)?.messages.length ?? 0) === 0;
 
     // Add the user message first, before the loop
     const userMessage: Message = { id: generateId(), role: 'user', content: userContent, timestamp: Date.now() };
@@ -361,12 +392,13 @@ export const useStore = create<Store>((set, get) => ({
               finishedBlocks.push({ type: 'text', text: textBuf });
               textBuf = '';
             } else if (currentToolBlock?.type === 'tool_use') {
+              const tb = currentToolBlock as ToolUseBlock;
               try {
-                (currentToolBlock as Record<string, unknown>)['input'] = JSON.parse(currentToolInput || '{}');
+                tb.input = JSON.parse(currentToolInput || '{}') as Record<string, unknown>;
               } catch {
-                (currentToolBlock as Record<string, unknown>)['input'] = {};
+                tb.input = {};
               }
-              finishedBlocks.push(currentToolBlock);
+              finishedBlocks.push(tb);
               currentToolBlock = null;
               currentToolInput = '';
             }
@@ -388,7 +420,7 @@ export const useStore = create<Store>((set, get) => ({
 
         if (stopReason !== 'tool_use') break;
 
-        const toolUseBlocks = finishedBlocks.filter(b => b.type === 'tool_use') as import('@/lib/types').ToolUseBlock[];
+        const toolUseBlocks = finishedBlocks.filter(b => b.type === 'tool_use') as ToolUseBlock[];
         if (!toolUseBlocks.length) break;
 
         // Execute tool calls
@@ -396,6 +428,41 @@ export const useStore = create<Store>((set, get) => ({
         for (const block of toolUseBlocks) {
           try {
             const resultContent = await executeTool(block);
+
+            // Issue 19: when click_element says the element wasn't found, auto-call
+            // read_page so the model immediately gets the current page state
+            if (block.name === 'computer') {
+              const act = (block.input as Record<string, unknown>).action as string;
+              if (act === 'click_element') {
+                const firstText = resultContent.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
+                if (firstText && (firstText.text.includes('not found') || firstText.text.includes('no longer'))) {
+                  try {
+                    const readBlock: ToolUseBlock = {
+                      type: 'tool_use',
+                      id: block.id + '_auto_read',
+                      name: 'computer',
+                      input: { action: 'read_page', filter: 'interactive' },
+                    };
+                    const readResult = await executeTool(readBlock);
+                    const readText = readResult
+                      .filter(b => b.type === 'text')
+                      .map(b => (b as { type: 'text'; text: string }).text)
+                      .join('');
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: block.id,
+                      content: [{
+                        type: 'text',
+                        text: `${firstText.text}\n\n[Auto read_page after element not found]\n${truncateText(readText)}`,
+                      }],
+                      is_error: true,
+                    });
+                    continue;
+                  } catch { /* fall through to normal result */ }
+                }
+              }
+            }
+
             // Truncate oversized text results (e.g. huge accessibility trees) at the source
             const trimmed = resultContent.map(b =>
               b.type === 'text' && b.text.length > CTX_MAX_TEXT_CHARS
@@ -450,6 +517,35 @@ export const useStore = create<Store>((set, get) => ({
     } finally {
       set({ isStreaming: false, abortController: null });
       saveConversations(get().conversations);
+
+      // Issue 16: fire-and-forget AI title generation after the first exchange
+      if (isFirstExchange) {
+        const conv = get().conversations.find(c => c.id === convId);
+        if (conv) {
+          const uText = (userContent.find(b => b.type === 'text') as { text?: string } | undefined)?.text ?? '';
+          const aText = conv.messages
+            .filter(m => m.role === 'assistant')
+            .flatMap(m => m.content
+              .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+              .map(b => b.text)
+            )
+            .join(' ')
+            .slice(0, 300);
+          if (uText || aText) {
+            generateConversationTitle(uText, aText, customFetch, settings)
+              .then(title => {
+                if (title) {
+                  set(s => ({
+                    conversations: patchConversation(s.conversations, convId, c => ({ ...c, title })),
+                  }));
+                  saveConversations(get().conversations);
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
       if (settings.computerUseEnabled) {
         chrome.runtime.sendMessage({ type: 'AGENT_STOPPED' }).catch(() => {});
       }

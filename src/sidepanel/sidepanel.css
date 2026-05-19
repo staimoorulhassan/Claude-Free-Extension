@@ -169,3 +169,27 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .typing-dots span:nth-child(2) { animation-delay: .2s; }
 .typing-dots span:nth-child(3) { animation-delay: .4s; }
 @keyframes bounce { 0%, 80%, 100% { transform: scaleY(1); } 40% { transform: scaleY(1.5); } }
+
+/* ── Issue 13: streaming text + cursor ──────────────────────────────────── */
+.streaming-text { white-space: pre-wrap; word-break: break-word; }
+.streaming-cursor { display: inline-block; width: 2px; height: 1em; background: var(--accent); margin-left: 1px; vertical-align: text-bottom; animation: cursor-blink 1s step-end infinite; }
+@keyframes cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* ── Issue 14: syntax highlight override (hljs theme sets its own bg) ────── */
+.prose pre .hljs { background: transparent !important; }
+
+/* ── Issue 17: tool block status variants + screenshot container ─────────── */
+.tool-icon { display: flex; align-items: center; }
+.tool-status--pending { color: var(--text3); }
+.tool-status--ok { color: #16a34a; font-weight: 500; }
+.tool-status--error { color: #b91c1c; font-weight: 500; }
+.tool-screenshot { background: var(--bg); border-top: 1px solid var(--border); padding: 4px 6px; }
+
+/* ── Issue 18: code preview block ───────────────────────────────────────── */
+.code-preview-block { margin: .6em 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.code-preview-block pre { margin: 0; border-radius: 0; border: none; }
+.code-preview-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px; background: var(--bg3); border-bottom: 1px solid var(--border); }
+.code-lang-tag { font-family: var(--font-mono); font-size: 11px; color: var(--text3); }
+.code-preview-btn { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; font-family: var(--font); transition: background .15s; }
+.code-preview-btn:hover { background: var(--accent-h); }
+.code-preview-iframe { width: 100%; height: 280px; border: none; display: block; background: #fff; }

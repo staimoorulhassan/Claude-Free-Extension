@@ -228,6 +228,8 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved',    x, y, button: 'none',  modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed',  x, y, button: 'left',  clickCount: 1, modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left',  clickCount: 1, modifiers: 0 });
+      // Issue 12: settle time so DOM/XHR updates before next read_page/screenshot
+      await new Promise(r => setTimeout(r, 300));
       return [{ type: 'text', text: `Left-clicked at (${x}, ${y})` }];
     }
 
@@ -281,6 +283,10 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
       const modifiers = (isAlt ? 1 : 0) | (isCtrl ? 2 : 0) | (isMeta ? 4 : 0) | (isShift ? 8 : 0);
       await cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', key: info.key, code: info.code, modifiers, text: info.text });
       await cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp',   key: info.key, code: info.code, modifiers });
+      // Issue 12: after Enter/Return give the page time to submit forms or trigger navigation
+      if (base === 'Return' || base === 'Enter') {
+        await new Promise(r => setTimeout(r, 800));
+      }
       return [{ type: 'text', text: `Pressed key: ${keyStr}` }];
     }
 
@@ -353,6 +359,8 @@ async function handleComputerUse(action: ComputerAction): Promise<ComputerToolRe
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved',    x, y, button: 'none', modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed',  x, y, button: 'left', clickCount: 1, modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1, modifiers: 0 });
+      // Issue 12: settle after element click so React/Vue state updates before next action
+      await new Promise(r => setTimeout(r, 300));
       return [{ type: 'text', text: `Clicked element ${refId} at (${x},${y})` }];
     }
 
