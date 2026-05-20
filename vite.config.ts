@@ -11,8 +11,12 @@ function copyStaticFiles() {
       for (const icon of ['icon-128.png', 'claude_icon.svg']) {
         if (fs.existsSync(icon)) fs.copyFileSync(icon, `dist/${icon}`);
       }
-      // accessibility-tree.js runs in MAIN world — copy the original compiled file
-      fs.copyFileSync('assets/accessibility-tree.js-DxrE0N5Q.js', 'dist/accessibility-tree.js');
+      // accessibility-tree.js runs in MAIN world — copy the pre-compiled file (tracked at root)
+      if (fs.existsSync('accessibility-tree.js')) {
+        fs.copyFileSync('accessibility-tree.js', 'dist/accessibility-tree.js');
+      } else if (fs.existsSync('assets/accessibility-tree.js-DxrE0N5Q.js')) {
+        fs.copyFileSync('assets/accessibility-tree.js-DxrE0N5Q.js', 'dist/accessibility-tree.js');
+      }
       // theme-init.js: sets data-mode before React mounts (avoids flash of wrong theme)
       if (fs.existsSync('theme-init.js')) fs.copyFileSync('theme-init.js', 'dist/theme-init.js');
       // inject-openai-provider.js: legacy global-fetch adapter (kept for reference;
