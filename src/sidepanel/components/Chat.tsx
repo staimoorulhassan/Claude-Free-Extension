@@ -2,13 +2,35 @@ import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { Message } from './Message';
 
+const QUICK_PROMPTS = [
+  'Summarize the current webpage for me',
+  'Help me write a professional email',
+  'Explain how the selected code works',
+];
+
 function EmptyState() {
+  const sendMessage = useStore(s => s.sendMessage);
+
   return (
     <div className="chat-empty">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-      </svg>
-      <p>Start a conversation</p>
+      <div className="chat-empty-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </div>
+      <div className="chat-empty-title">How can I help?</div>
+      <div className="chat-empty-sub">Ask anything or pick a suggestion</div>
+      <div className="chat-empty-chips">
+        {QUICK_PROMPTS.map(p => (
+          <button
+            key={p}
+            className="chat-empty-chip"
+            onClick={() => sendMessage([{ type: 'text', text: p }])}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

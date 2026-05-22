@@ -115,11 +115,9 @@ function BlockRenderer({ block, isStreaming }: { block: ContentBlock; isStreamin
   }
   if (block.type === 'thinking') {
     return (
-      <details style={{ marginBottom: 4 }}>
-        <summary style={{ fontSize: 12, color: 'var(--text3)', cursor: 'pointer' }}>Thinking…</summary>
-        <div className="prose" style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>
-          {block.thinking}
-        </div>
+      <details className="thinking-block">
+        <summary className="thinking-block summary">Thinking…</summary>
+        <div className="prose thinking-body">{block.thinking}</div>
       </details>
     );
   }
@@ -146,31 +144,34 @@ export function Message({ message, isStreaming }: { message: MsgType; isStreamin
 
   return (
     <div className={`msg msg--${message.role}`}>
-      <div className="msg-bubble">
-        {isEmpty && isStreaming ? (
-          <div className="typing-dots">
-            <span /><span /><span />
+      {!isUser && <div className="msg-avatar">C</div>}
+      <div className="msg-content">
+        <div className="msg-bubble">
+          {isEmpty && isStreaming ? (
+            <div className="typing-dots">
+              <span /><span /><span />
+            </div>
+          ) : (
+            message.content.map((block, i) => (
+              <BlockRenderer key={i} block={block} isStreaming={isStreaming && i === lastIdx} />
+            ))
+          )}
+        </div>
+        {!isUser && !isEmpty && (
+          <div className="msg-meta">
+            <span className="msg-time">{formatTime(message.timestamp)}</span>
+            <button className="msg-copy" onClick={copy} title="Copy">
+              <CopyIcon />
+              {copied ? 'Copied' : 'Copy'}
+            </button>
           </div>
-        ) : (
-          message.content.map((block, i) => (
-            <BlockRenderer key={i} block={block} isStreaming={isStreaming && i === lastIdx} />
-          ))
+        )}
+        {isUser && (
+          <div className="msg-meta">
+            <span className="msg-time">{formatTime(message.timestamp)}</span>
+          </div>
         )}
       </div>
-      {!isUser && !isEmpty && (
-        <div className="msg-meta">
-          <span className="msg-time">{formatTime(message.timestamp)}</span>
-          <button className="msg-copy" onClick={copy} title="Copy">
-            <CopyIcon />
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-      )}
-      {isUser && (
-        <div className="msg-meta">
-          <span className="msg-time">{formatTime(message.timestamp)}</span>
-        </div>
-      )}
     </div>
   );
 }

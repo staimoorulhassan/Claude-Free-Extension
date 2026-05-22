@@ -30,16 +30,9 @@ export function HistoryPanel() {
 
   if (conversations.length === 0) {
     return (
-      <div className="history" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text3)', fontSize: 13 }}>
-        <div style={{ textAlign: 'center' }}>
-          <p>No conversations yet.</p>
-          <button
-            onClick={newConversation}
-            style={{ marginTop: 8, background: 'var(--accent)', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}
-          >
-            Start one
-          </button>
-        </div>
+      <div className="history history-empty">
+        <p>No conversations yet.</p>
+        <button className="history-empty-btn" onClick={newConversation}>Start one</button>
       </div>
     );
   }
