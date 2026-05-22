@@ -5,6 +5,7 @@ import { Chat } from './components/Chat';
 import { MessageInput } from './components/MessageInput';
 import { SettingsPanel } from './components/SettingsPanel';
 import { HistoryPanel } from './components/HistoryPanel';
+import { ApprovalCard } from './components/ApprovalCard';
 
 function applyTheme(theme: 'auto' | 'light' | 'dark') {
   const isDark =
@@ -48,6 +49,7 @@ export function App() {
               <button onClick={clearError}>×</button>
             </div>
           )}
+          <ApprovalCard />
           <MessageInput />
         </>
       )}

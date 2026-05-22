@@ -5,6 +5,11 @@ import { getSettings, saveSettings, getConversations, saveConversations, generat
 import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
 import { getEnabledTools, executeTool } from '@/lib/tools';
 
+export interface PendingApproval {
+  blocks: ToolUseBlock[];
+  resolve: (decision: 'approve' | 'reject' | string) => void;
+}
+
 interface Store {
   conversations: Conversation[];
   activeConversationId: string | null;
@@ -14,6 +19,7 @@ interface Store {
   showHistory: boolean;
   abortController: AbortController | null;
   error: string | null;
+  pendingApproval: PendingApproval | null;
 
   init: () => Promise<void>;
   newConversation: () => void;
@@ -25,6 +31,8 @@ interface Store {
   setShowSettings: (v: boolean) => void;
   setShowHistory: (v: boolean) => void;
   clearError: () => void;
+  approvePending: (correction?: string) => void;
+  rejectPending: () => void;
 }
 
 function activeConversation(get: () => Store): Conversation | undefined {
@@ -216,6 +224,7 @@ export const useStore = create<Store>((set, get) => ({
   showHistory: false,
   abortController: null,
   error: null,
+  pendingApproval: null,
 
   init: async () => {
     const [settings, conversations] = await Promise.all([getSettings(), getConversations()]);
@@ -245,7 +254,23 @@ export const useStore = create<Store>((set, get) => ({
 
   stopGeneration: () => {
     get().abortController?.abort();
-    set({ isStreaming: false, abortController: null });
+    // Reject any pending approval so the agent loop exits cleanly
+    get().pendingApproval?.resolve('reject');
+    set({ isStreaming: false, abortController: null, pendingApproval: null });
+  },
+
+  approvePending: (correction?: string) => {
+    const { pendingApproval } = get();
+    if (!pendingApproval) return;
+    set({ pendingApproval: null });
+    pendingApproval.resolve(correction && correction.trim() ? correction : 'approve');
+  },
+
+  rejectPending: () => {
+    const { pendingApproval } = get();
+    if (!pendingApproval) return;
+    set({ pendingApproval: null });
+    pendingApproval.resolve('reject');
   },
 
   updateSettings: async (patch) => {
@@ -328,8 +353,8 @@ export const useStore = create<Store>((set, get) => ({
               'You are a browser automation agent. You have a `computer` tool that gives you FULL, REAL control of the user\'s browser.',
               'The computer tool is ALREADY connected and working. Do NOT say you cannot access the browser — you can and must.',
               '',
-              'MANDATORY: for ANY task involving a website, URL, search, or web content — call the computer tool immediately.',
-              'Do NOT explain what you will do. Do NOT ask for confirmation. Just call the tool.',
+              'IMPORTANT: If the task is ambiguous or you need clarification, ask the user a question BEFORE calling tools.',
+              'For clear tasks: call the computer tool directly without asking first.',
               '',
               'TOOL ACTIONS (use these in sequence):',
               '  navigate   → go to a URL',
@@ -422,6 +447,50 @@ export const useStore = create<Store>((set, get) => ({
 
         const toolUseBlocks = finishedBlocks.filter(b => b.type === 'tool_use') as ToolUseBlock[];
         if (!toolUseBlocks.length) break;
+
+        // Approval gate — pause and show pending actions to the user before executing
+        if (settings.requireApproval && settings.computerUseEnabled) {
+          const decision = await new Promise<string>(resolve => {
+            set({ pendingApproval: { blocks: toolUseBlocks, resolve } });
+          });
+          set({ pendingApproval: null });
+
+          if (decision === 'reject') {
+            // Strip unexecuted tool_use blocks from the assistant message so
+            // history stays valid (no dangling tool_use without a tool_result)
+            set(s => ({
+              conversations: patchConversation(s.conversations, convId, c => ({
+                ...c,
+                messages: c.messages.map(m =>
+                  m.id === assistantId
+                    ? { ...m, content: finishedBlocks.filter(b => b.type !== 'tool_use') }
+                    : m,
+                ),
+              })),
+            }));
+            break;
+          }
+
+          if (decision !== 'approve') {
+            // User typed a correction — strip tool_use from assistant, add correction as
+            // a user message, then continue the loop so the AI re-plans with the correction
+            set(s => ({
+              conversations: patchConversation(s.conversations, convId, c => ({
+                ...c,
+                messages: [
+                  ...c.messages.map(m =>
+                    m.id === assistantId
+                      ? { ...m, content: finishedBlocks.filter(b => b.type !== 'tool_use') }
+                      : m,
+                  ),
+                  { id: generateId(), role: 'user' as const, content: [{ type: 'text' as const, text: decision }], timestamp: Date.now() },
+                ],
+              })),
+            }));
+            continue;
+          }
+          // 'approve' → fall through to execute tools normally
+        }
 
         // Execute tool calls
         const toolResults: ContentBlock[] = [];

@@ -100,6 +100,7 @@ export interface AppSettings {
   systemPrompt: string;
   maxTokens: number;
   computerUseEnabled: boolean;
+  requireApproval: boolean;
   theme: 'auto' | 'light' | 'dark';
 }
 
@@ -112,6 +113,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   systemPrompt: '',
   maxTokens: 4096,
   computerUseEnabled: true,
+  requireApproval: true,
   theme: 'auto',
 };
 

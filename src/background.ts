@@ -22,8 +22,10 @@ chrome.runtime.onInstalled.addListener(() => {
 
 let attachedTabId: number | null = null;
 
-async function getWebTabId(): Promise<number> {
-  const tabs = await chrome.tabs.query({ active: true });
+async function getWebTabId(windowId?: number): Promise<number> {
+  // Prefer the active tab in the specific window the side panel is open in
+  const query = windowId ? { active: true, windowId } : { active: true, lastFocusedWindow: true };
+  const tabs = await chrome.tabs.query(query);
   const tab = tabs.find(
     t => t.url && !t.url.startsWith('chrome-extension://') && !t.url.startsWith('chrome://'),
   );
@@ -150,8 +152,8 @@ interface ComputerToolResult {
 
 // ── Computer use handler ──────────────────────────────────────────────────────
 
-async function handleComputerUse(action: ComputerAction): Promise<ComputerToolResult[]> {
-  const tabId = await getWebTabId();
+async function handleComputerUse(action: ComputerAction, windowId?: number): Promise<ComputerToolResult[]> {
+  const tabId = await getWebTabId(windowId);
 
   switch (action.action) {
 
@@ -383,7 +385,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === 'computer_use') {
-    handleComputerUse(msg.action as ComputerAction)
+    handleComputerUse(msg.action as ComputerAction, msg.windowId as number | undefined)
       .then(result => sendResponse({ result }))
       .catch(e => sendResponse({ error: (e as Error).message }));
     return true;

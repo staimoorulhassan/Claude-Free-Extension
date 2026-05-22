@@ -134,7 +134,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .field textarea { min-height: 70px; resize: vertical; }
 .field input[type='range'] { padding: 0; border: none; accent-color: var(--accent); }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.toggle-row label { font-size: 13px; color: var(--text2); }
+.toggle-row label { font-size: 13px; color: var(--text2); display: flex; flex-direction: column; gap: 2px; }
+.toggle-hint { font-size: 11px; color: var(--text3); font-weight: 400; }
 .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
 .toggle input { opacity: 0; width: 0; height: 0; }
 .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 10px; cursor: pointer; transition: .2s; }
@@ -203,3 +204,22 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .code-preview-btn { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; font-family: var(--font); transition: background .15s; }
 .code-preview-btn:hover { background: var(--accent-h); }
 .code-preview-iframe { width: 100%; height: 280px; border: none; display: block; background: #fff; }
+
+/* ── Approval card ───────────────────────────────────────────────────────── */
+.approval-card { border-top: 2px solid var(--accent); background: var(--bg2); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.approval-header { display: flex; align-items: center; gap: 6px; }
+.approval-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.approval-actions { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.approval-action-item { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--text2); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 8px; }
+.approval-action-icon { font-size: 14px; flex-shrink: 0; }
+.approval-action-label { font-family: var(--font-mono); word-break: break-all; }
+.approval-correction { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-family: var(--font); font-size: 12px; resize: none; outline: none; box-sizing: border-box; }
+.approval-correction:focus { border-color: var(--accent); }
+.approval-correction::placeholder { color: var(--text3); }
+.approval-buttons { display: flex; gap: 6px; }
+.approval-btn { flex: 1; padding: 6px 10px; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: background .15s; }
+.approval-btn--approve { background: var(--accent); color: #fff; }
+.approval-btn--approve:hover { background: var(--accent-h); }
+.approval-btn--reject { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+.approval-btn--reject:hover { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+.approval-hint { font-size: 11px; color: var(--text3); text-align: center; }

@@ -23,8 +23,10 @@ export interface ComputerToolResult {
 }
 
 export async function executeComputerAction(action: ComputerAction): Promise<ComputerToolResult[]> {
+  // Include the windowId so the background targets the active tab in THIS window, not any window
+  const windowId: number | undefined = await chrome.windows.getCurrent().then(w => w.id).catch(() => undefined);
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ type: 'computer_use', action }, response => {
+    chrome.runtime.sendMessage({ type: 'computer_use', action, windowId }, response => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message ?? 'Extension messaging error'));
         return;

@@ -208,6 +208,22 @@ export function SettingsPanel() {
               <span className="toggle-slider" />
             </label>
           </div>
+          {settings.computerUseEnabled && (
+            <div className="toggle-row">
+              <label>
+                Ask for approval before each action
+                <span className="toggle-hint">Show a confirmation card before the agent runs any browser action</span>
+              </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.requireApproval ?? true}
+                  onChange={e => set({ requireApproval: e.target.checked })}
+                />
+                <span className="toggle-slider" />
+              </label>
+            </div>
+          )}
         </div>
       </div>
 
