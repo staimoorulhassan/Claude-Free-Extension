@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent, ToolUseBlock } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
 import { getSettings, saveSettings, getConversations, saveConversations, generateId, generateTitle } from '@/lib/storage';
+import { getRecordings, saveRecordings, recordingToText } from '@/lib/recordings';
+import type { Recording } from '@/lib/recordings';
 import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
 import { getEnabledTools, executeTool } from '@/lib/tools';
 
@@ -9,6 +11,8 @@ export interface PendingApproval {
   blocks: ToolUseBlock[];
   resolve: (decision: 'approve' | 'reject' | string) => void;
 }
+
+export type { Recording };
 
 interface Store {
   conversations: Conversation[];
@@ -20,6 +24,10 @@ interface Store {
   abortController: AbortController | null;
   error: string | null;
   pendingApproval: PendingApproval | null;
+  isRecording: boolean;
+  recordings: Recording[];
+  showRecordings: boolean;
+  attachedRecordingId: string | null;
 
   init: () => Promise<void>;
   newConversation: () => void;
@@ -33,6 +41,11 @@ interface Store {
   clearError: () => void;
   approvePending: (correction?: string) => void;
   rejectPending: () => void;
+  setShowRecordings: (v: boolean) => void;
+  startRecording: () => Promise<void>;
+  stopRecording: (name: string) => Promise<void>;
+  deleteRecording: (id: string) => void;
+  setAttachedRecording: (id: string | null) => void;
 }
 
 function activeConversation(get: () => Store): Conversation | undefined {
@@ -225,10 +238,14 @@ export const useStore = create<Store>((set, get) => ({
   abortController: null,
   error: null,
   pendingApproval: null,
+  isRecording: false,
+  recordings: [],
+  showRecordings: false,
+  attachedRecordingId: null,
 
   init: async () => {
-    const [settings, conversations] = await Promise.all([getSettings(), getConversations()]);
-    set({ settings, conversations });
+    const [settings, conversations, recordings] = await Promise.all([getSettings(), getConversations(), getRecordings()]);
+    set({ settings, conversations, recordings });
     // Listen for stop requests from the in-page "Stop Claude" button
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg.type === 'STOP_GENERATION') get().stopGeneration();
@@ -281,10 +298,54 @@ export const useStore = create<Store>((set, get) => ({
 
   setShowSettings: (v) => set({ showSettings: v }),
   setShowHistory: (v) => set({ showHistory: v }),
+  setShowRecordings: (v) => set({ showRecordings: v }),
   clearError: () => set({ error: null }),
 
+  startRecording: async () => {
+    const windowId = await chrome.windows.getCurrent().then(w => w.id).catch(() => undefined);
+    await new Promise<void>(resolve => {
+      chrome.runtime.sendMessage({ type: 'START_RECORDING', windowId }, () => resolve());
+    });
+    set({ isRecording: true });
+  },
+
+  stopRecording: async (name: string) => {
+    const steps = await new Promise<unknown[]>(resolve => {
+      chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }, (resp) => resolve((resp as { steps: unknown[] })?.steps ?? []));
+    });
+    set({ isRecording: false });
+    if (!steps.length) return;
+    const rec: Recording = { id: generateId(), name, createdAt: Date.now(), steps: steps as Recording['steps'] };
+    const recordings = [rec, ...get().recordings];
+    set({ recordings });
+    await saveRecordings(recordings);
+  },
+
+  deleteRecording: (id: string) => {
+    const recordings = get().recordings.filter(r => r.id !== id);
+    set({ recordings });
+    if (get().attachedRecordingId === id) set({ attachedRecordingId: null });
+    saveRecordings(recordings);
+  },
+
+  setAttachedRecording: (id) => set({ attachedRecordingId: id }),
+
   sendMessage: async (userContent: ContentBlock[]) => {
-    const { settings } = get();
+    const { settings, attachedRecordingId, recordings } = get();
+
+    // If a recording is attached, prepend its steps as context
+    let effectiveContent = userContent;
+    if (attachedRecordingId) {
+      const rec = recordings.find(r => r.id === attachedRecordingId);
+      if (rec) {
+        const demoText = recordingToText(rec) + '\n\n[Task]:';
+        const existingText = userContent.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
+        effectiveContent = existingText
+          ? userContent.map(b => b === existingText ? { ...existingText, text: `${demoText} ${existingText.text}` } : b)
+          : [{ type: 'text' as const, text: demoText }, ...userContent];
+      }
+      set({ attachedRecordingId: null });
+    }
 
     if (!get().activeConversationId) get().newConversation();
     const convId = get().activeConversationId!;
@@ -293,8 +354,8 @@ export const useStore = create<Store>((set, get) => ({
     const isFirstExchange = (activeConversation(get)?.messages.length ?? 0) === 0;
 
     // Add the user message first, before the loop
-    const userMessage: Message = { id: generateId(), role: 'user', content: userContent, timestamp: Date.now() };
-    const firstText = (userContent.find(b => b.type === 'text') as { text?: string } | undefined)?.text ?? '';
+    const userMessage: Message = { id: generateId(), role: 'user', content: effectiveContent, timestamp: Date.now() };
+    const firstText = (effectiveContent.find(b => b.type === 'text') as { text?: string } | undefined)?.text ?? '';
 
     set(s => ({
       conversations: patchConversation(s.conversations, convId, c => ({
@@ -591,7 +652,7 @@ export const useStore = create<Store>((set, get) => ({
       if (isFirstExchange) {
         const conv = get().conversations.find(c => c.id === convId);
         if (conv) {
-          const uText = (userContent.find(b => b.type === 'text') as { text?: string } | undefined)?.text ?? '';
+          const uText = (effectiveContent.find(b => b.type === 'text') as { text?: string } | undefined)?.text ?? '';
           const aText = conv.messages
             .filter(m => m.role === 'assistant')
             .flatMap(m => m.content

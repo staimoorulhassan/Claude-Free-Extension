@@ -18,6 +18,27 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 });
 
+// ── Recording state ───────────────────────────────────────────────────────────
+
+interface RecordedStep {
+  action: string;
+  url?: string;
+  x?: number; y?: number;
+  elementTag?: string; elementText?: string; elementHref?: string;
+  text?: string; inputName?: string;
+}
+
+let recordingActive = false;
+let recordingTabId: number | null = null;
+let recordingSteps: RecordedStep[] = [];
+
+// Track navigations that happen while recording
+function maybeRecordNavigation(tabId: number, url: string) {
+  if (recordingActive && recordingTabId === tabId && url) {
+    recordingSteps.push({ action: 'navigate', url });
+  }
+}
+
 // ── CDP debugger state ────────────────────────────────────────────────────────
 
 let attachedTabId: number | null = null;
@@ -78,6 +99,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (attachedTabId === tabId && changeInfo.status === 'loading') attachedTabId = null;
+  if (changeInfo.url) maybeRecordNavigation(tabId, changeInfo.url);
 });
 
 chrome.debugger.onDetach.addListener((source) => {
@@ -388,6 +410,42 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleComputerUse(msg.action as ComputerAction, msg.windowId as number | undefined)
       .then(result => sendResponse({ result }))
       .catch(e => sendResponse({ error: (e as Error).message }));
+    return true;
+  }
+
+  if (msg.type === 'START_RECORDING') {
+    (async () => {
+      recordingSteps = [];
+      recordingActive = true;
+      const windowId = msg.windowId as number | undefined;
+      const query = windowId ? { active: true, windowId } : { active: true, lastFocusedWindow: true };
+      const tabs = await chrome.tabs.query(query);
+      const tab = tabs.find(t => t.url && !t.url.startsWith('chrome-extension://') && !t.url.startsWith('chrome://'));
+      if (tab?.id) {
+        recordingTabId = tab.id;
+        if (tab.url) recordingSteps.push({ action: 'navigate', url: tab.url });
+        chrome.tabs.sendMessage(tab.id, { type: 'ENABLE_RECORDING' }).catch(() => {});
+      }
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  if (msg.type === 'STOP_RECORDING') {
+    recordingActive = false;
+    if (recordingTabId !== null) {
+      chrome.tabs.sendMessage(recordingTabId, { type: 'DISABLE_RECORDING' }).catch(() => {});
+      recordingTabId = null;
+    }
+    const steps = [...recordingSteps];
+    recordingSteps = [];
+    sendResponse({ steps });
+    return true;
+  }
+
+  if (msg.type === 'RECORD_STEP') {
+    if (recordingActive) recordingSteps.push(msg.step as RecordedStep);
+    sendResponse({ ok: true });
     return true;
   }
 

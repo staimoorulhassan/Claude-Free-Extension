@@ -53,6 +53,11 @@ export function MessageInput() {
   const isStreaming = useStore(s => s.isStreaming);
   const sendMessage = useStore(s => s.sendMessage);
   const stopGeneration = useStore(s => s.stopGeneration);
+  const attachedRecordingId = useStore(s => s.attachedRecordingId);
+  const recordings = useStore(s => s.recordings);
+  const setAttachedRecording = useStore(s => s.setAttachedRecording);
+  const setShowRecordings = useStore(s => s.setShowRecordings);
+  const attachedRecording = recordings.find(r => r.id === attachedRecordingId);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -117,8 +122,14 @@ export function MessageInput() {
 
   return (
     <div className="input-area">
-      {attachments.length > 0 && (
+      {(attachments.length > 0 || attachedRecording) && (
         <div className="input-attachments">
+          {attachedRecording && (
+            <div className="attachment-chip attachment-chip--recording" onClick={() => setShowRecordings(true)} title="Click to manage recordings">
+              ⏺ {attachedRecording.name}
+              <button onClick={e => { e.stopPropagation(); setAttachedRecording(null); }} title="Detach">×</button>
+            </div>
+          )}
           {attachments.map((a, i) => (
             <div key={i} className="attachment-chip">
               {a.name}

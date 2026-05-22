@@ -6,6 +6,7 @@ import { MessageInput } from './components/MessageInput';
 import { SettingsPanel } from './components/SettingsPanel';
 import { HistoryPanel } from './components/HistoryPanel';
 import { ApprovalCard } from './components/ApprovalCard';
+import { RecordingsPanel } from './components/RecordingsPanel';
 
 function applyTheme(theme: 'auto' | 'light' | 'dark') {
   const isDark =
@@ -18,6 +19,7 @@ export function App() {
   const init = useStore(s => s.init);
   const showSettings = useStore(s => s.showSettings);
   const showHistory = useStore(s => s.showHistory);
+  const showRecordings = useStore(s => s.showRecordings);
   const settings = useStore(s => s.settings);
   const error = useStore(s => s.error);
   const clearError = useStore(s => s.clearError);
@@ -40,6 +42,8 @@ export function App() {
         <SettingsPanel />
       ) : showHistory ? (
         <HistoryPanel />
+      ) : showRecordings ? (
+        <RecordingsPanel />
       ) : (
         <>
           <Chat />
