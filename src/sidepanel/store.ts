@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent, ToolUseBlock } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
-import { getSettings, saveSettings, getConversations, saveConversations, generateId, generateTitle } from '@/lib/storage';
+import { getSettings, saveSettings, getConversations, saveConversations, generateId, generateTitle, getProviderVault, saveProviderVault } from '@/lib/storage';
+import type { ProviderVault } from '@/lib/storage';
 import { getRecordings, saveRecordings, recordingToText } from '@/lib/recordings';
 import type { Recording } from '@/lib/recordings';
 import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
@@ -24,6 +25,7 @@ interface Store {
   abortController: AbortController | null;
   error: string | null;
   pendingApproval: PendingApproval | null;
+  providerVault: ProviderVault;
   isRecording: boolean;
   recordings: Recording[];
   showRecordings: boolean;
@@ -238,14 +240,23 @@ export const useStore = create<Store>((set, get) => ({
   abortController: null,
   error: null,
   pendingApproval: null,
+  providerVault: {},
   isRecording: false,
   recordings: [],
   showRecordings: false,
   attachedRecordingId: null,
 
   init: async () => {
-    const [settings, conversations, recordings] = await Promise.all([getSettings(), getConversations(), getRecordings()]);
-    set({ settings, conversations, recordings });
+    const [settings, conversations, recordings, providerVault] = await Promise.all([
+      getSettings(), getConversations(), getRecordings(), getProviderVault(),
+    ]);
+    // On load, restore the saved key+model for the currently-selected provider
+    const saved = providerVault[settings.provider.provider];
+    if (saved) {
+      if (saved.apiKey && !settings.provider.apiKey) settings.provider.apiKey = saved.apiKey;
+      if (saved.model && !settings.provider.defaultModel) settings.provider.defaultModel = saved.model;
+    }
+    set({ settings, conversations, recordings, providerVault });
     // Listen for stop requests from the in-page "Stop Claude" button
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg.type === 'STOP_GENERATION') get().stopGeneration();
@@ -291,7 +302,43 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   updateSettings: async (patch) => {
-    const settings = { ...get().settings, ...patch, provider: { ...get().settings.provider, ...(patch.provider ?? {}) } };
+    const current = get().settings;
+    const vault = get().providerVault;
+    let newProvider = { ...current.provider, ...(patch.provider ?? {}) };
+
+    // Provider name switched → restore that provider's saved key + model from vault
+    if (patch.provider?.provider && patch.provider.provider !== current.provider.provider) {
+      const saved = vault[patch.provider.provider];
+      newProvider = {
+        ...newProvider,
+        apiKey: saved?.apiKey ?? '',
+        defaultModel: saved?.model ?? newProvider.defaultModel,
+      };
+    }
+
+    // API key changed → save to vault under the current provider name
+    if (patch.provider?.apiKey !== undefined && patch.provider.apiKey !== current.provider.apiKey) {
+      const providerName = newProvider.provider;
+      const newVault: ProviderVault = {
+        ...vault,
+        [providerName]: { ...vault[providerName], apiKey: patch.provider.apiKey },
+      };
+      set({ providerVault: newVault });
+      saveProviderVault(newVault).catch(() => {});
+    }
+
+    // Model changed → save to vault under the current provider name
+    if (patch.provider?.defaultModel !== undefined && patch.provider.defaultModel !== current.provider.defaultModel) {
+      const providerName = newProvider.provider;
+      const newVault: ProviderVault = {
+        ...vault,
+        [providerName]: { ...vault[providerName], apiKey: vault[providerName]?.apiKey ?? newProvider.apiKey, model: patch.provider.defaultModel },
+      };
+      set({ providerVault: newVault });
+      saveProviderVault(newVault).catch(() => {});
+    }
+
+    const settings = { ...current, ...patch, provider: newProvider };
     set({ settings });
     await saveSettings(settings);
   },

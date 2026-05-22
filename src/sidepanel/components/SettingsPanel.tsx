@@ -121,8 +121,13 @@ function ModelSelector({
 export function SettingsPanel() {
   const settings = useStore(s => s.settings);
   const updateSettings = useStore(s => s.updateSettings);
+  const providerVault = useStore(s => s.providerVault);
 
   const set = (patch: Parameters<typeof updateSettings>[0]) => updateSettings(patch);
+
+  const FREE_PROVIDERS = new Set(['pollinations', 'ollama', 'lmstudio']);
+  const hasSavedKey = (p: string) => FREE_PROVIDERS.has(p) || !!(providerVault[p]?.apiKey);
+  const currentHasKey = !!settings.provider.apiKey || FREE_PROVIDERS.has(settings.provider.provider);
 
   return (
     <div className="settings">
@@ -136,19 +141,25 @@ export function SettingsPanel() {
               onChange={e => set({ provider: { ...settings.provider, provider: e.target.value } })}
             >
               {PROVIDER_KEYS.map(p => (
-                <option key={p} value={p}>{p}</option>
+                <option key={p} value={p}>{hasSavedKey(p) ? `✓ ${p}` : p}</option>
               ))}
               <option value="custom">custom</option>
             </select>
+            <span className="provider-vault-note">✓ = key saved · switching restores saved key automatically</span>
           </div>
 
           <div className="field">
-            <label>API Key</label>
+            <div className="apikey-label-row">
+              <label>API Key</label>
+              {currentHasKey && (
+                <span className="apikey-saved-badge">🔒 saved locally</span>
+              )}
+            </div>
             <input
               type="password"
               value={settings.provider.apiKey}
               onChange={e => set({ provider: { ...settings.provider, apiKey: e.target.value } })}
-              placeholder="Leave blank for key-free providers (Pollinations)"
+              placeholder={FREE_PROVIDERS.has(settings.provider.provider) ? 'No key needed' : 'Enter API key…'}
             />
           </div>
 

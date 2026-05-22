@@ -224,6 +224,13 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .approval-btn--reject:hover { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
 .approval-hint { font-size: 11px; color: var(--text3); text-align: center; }
 
+/* ── Provider vault UI ───────────────────────────────────────────────────── */
+.provider-vault-note { font-size: 10px; color: var(--text3); margin-top: 3px; }
+.apikey-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.apikey-label-row label { margin-bottom: 0 !important; }
+.apikey-saved-badge { font-size: 10px; color: #16a34a; font-weight: 600; background: #dcfce7; padding: 1px 6px; border-radius: 10px; }
+[data-theme=dark] .apikey-saved-badge { background: #14532d; color: #86efac; }
+
 /* ── Recording button state ──────────────────────────────────────────────── */
 .icon-btn--recording { color: #dc2626 !important; animation: rec-pulse 1.4s ease-in-out infinite; }
 @keyframes rec-pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }

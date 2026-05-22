@@ -1,6 +1,26 @@
 import type { AppSettings, Conversation } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
+// ── Per-provider vault (local only — never synced to Google servers) ───────────
+// Stores each provider's API key and last-used model separately so switching
+// providers never loses a previously-entered key.
+
+export interface ProviderSave {
+  apiKey: string;
+  model?: string;
+}
+
+export type ProviderVault = Record<string, ProviderSave>;
+
+export async function getProviderVault(): Promise<ProviderVault> {
+  const data = await chrome.storage.local.get('providerVault');
+  return (data['providerVault'] as ProviderVault) ?? {};
+}
+
+export async function saveProviderVault(vault: ProviderVault): Promise<void> {
+  await chrome.storage.local.set({ providerVault: vault });
+}
+
 const STALE_POLLINATIONS_MODELS = new Set(['openai', 'gemini-fast', 'mistral', 'gemini']);
 
 export async function getSettings(): Promise<AppSettings> {
