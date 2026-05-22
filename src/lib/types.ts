@@ -95,6 +95,19 @@ export interface ProviderConfig {
   debug?: boolean;
 }
 
+export interface SteelConfig {
+  apiKey: string;
+  sessionId?: string;
+  solveCaptcha: boolean;
+  proxy?: {
+    host: string;
+    port: number;
+    username?: string;
+    password?: string;
+  };
+  region?: 'us-east-1' | 'eu-west-1' | 'ap-southeast-1';
+}
+
 export interface AppSettings {
   provider: ProviderConfig;
   systemPrompt: string;
@@ -102,6 +115,8 @@ export interface AppSettings {
   computerUseEnabled: boolean;
   requireApproval: boolean;
   theme: 'auto' | 'light' | 'dark';
+  useSteel?: boolean;
+  steel?: SteelConfig;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -115,6 +130,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   computerUseEnabled: true,
   requireApproval: true,
   theme: 'auto',
+  useSteel: false,
+  steel: {
+    apiKey: '',
+    solveCaptcha: true,
+    region: 'us-east-1',
+  },
 };
 
 export interface Conversation {

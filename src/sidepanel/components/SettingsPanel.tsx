@@ -235,6 +235,42 @@ export function SettingsPanel() {
               </label>
             </div>
           )}
+          
+          <div className="toggle-row">
+            <label>Use Steel stealth browser</label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={settings.useSteel ?? false}
+                onChange={e => set({ useSteel: e.target.checked })}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+          {settings.useSteel && (
+            <>
+              <div className="field">
+                <label>Steel API Key</label>
+                <input
+                  type="password"
+                  value={settings.steel?.apiKey ?? ''}
+                  onChange={e => set({ steel: { ...settings.steel, apiKey: e.target.value } })}
+                  placeholder="Enter Steel API key…"
+                />
+              </div>
+              <div className="toggle-row">
+                <label>Auto-solve CAPTCHAs</label>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={settings.steel?.solveCaptcha ?? true}
+                    onChange={e => set({ steel: { ...settings.steel, solveCaptcha: e.target.checked } })}
+                  />
+                  <span className="toggle-slider" />
+                </label>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

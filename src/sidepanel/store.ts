@@ -7,6 +7,8 @@ import { getRecordings, saveRecordings, recordingToText } from '@/lib/recordings
 import type { Recording } from '@/lib/recordings';
 import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
 import { getEnabledTools, executeTool } from '@/lib/tools';
+import { createSteelManager } from '@/lib/steel-session';
+import type { SteelSession } from '@/lib/steel-client';
 
 export interface PendingApproval {
   blocks: ToolUseBlock[];
@@ -30,6 +32,8 @@ interface Store {
   recordings: Recording[];
   showRecordings: boolean;
   attachedRecordingId: string | null;
+  steelSession: SteelSession | null;
+  steelLiveUrl: string | undefined;
 
   init: () => Promise<void>;
   newConversation: () => void;
@@ -48,6 +52,8 @@ interface Store {
   stopRecording: (name: string) => Promise<void>;
   deleteRecording: (id: string) => void;
   setAttachedRecording: (id: string | null) => void;
+  connectSteel: () => Promise<void>;
+  disconnectSteel: () => Promise<void>;
 }
 
 function activeConversation(get: () => Store): Conversation | undefined {
@@ -245,22 +251,39 @@ export const useStore = create<Store>((set, get) => ({
   recordings: [],
   showRecordings: false,
   attachedRecordingId: null,
+  steelSession: null,
+  steelLiveUrl: undefined,
 
   init: async () => {
     const [settings, conversations, recordings, providerVault] = await Promise.all([
       getSettings(), getConversations(), getRecordings(), getProviderVault(),
     ]);
-    // On load, restore the saved key+model for the currently-selected provider
     const saved = providerVault[settings.provider.provider];
     if (saved) {
       if (saved.apiKey && !settings.provider.apiKey) settings.provider.apiKey = saved.apiKey;
       if (saved.model && !settings.provider.defaultModel) settings.provider.defaultModel = saved.model;
     }
     set({ settings, conversations, recordings, providerVault });
-    // Listen for stop requests from the in-page "Stop Claude" button
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg.type === 'STOP_GENERATION') get().stopGeneration();
     });
+  },
+
+  connectSteel: async () => {
+    const { settings } = get();
+    if (!settings.useSteel || !settings.steel?.apiKey) return;
+    
+    try {
+      const manager = createSteelManager(settings.steel);
+      const session = await manager.createOrReuse();
+      set({ steelSession: session, steelLiveUrl: session.liveUrl });
+    } catch (e) {
+      set({ error: `Steel connection failed: ${(e as Error).message}` });
+    }
+  },
+
+  disconnectSteel: async () => {
+    set({ steelSession: null, steelLiveUrl: undefined });
   },
 
   newConversation: () => {
@@ -602,9 +625,10 @@ export const useStore = create<Store>((set, get) => ({
 
         // Execute tool calls
         const toolResults: ContentBlock[] = [];
+        const { steelSession } = get();
         for (const block of toolUseBlocks) {
           try {
-            const resultContent = await executeTool(block);
+            const resultContent = await executeTool(block, steelSession);
 
             // Issue 19: when click_element says the element wasn't found, auto-call
             // read_page so the model immediately gets the current page state
@@ -613,14 +637,14 @@ export const useStore = create<Store>((set, get) => ({
               if (act === 'click_element') {
                 const firstText = resultContent.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
                 if (firstText && (firstText.text.includes('not found') || firstText.text.includes('no longer'))) {
-                  try {
-                    const readBlock: ToolUseBlock = {
-                      type: 'tool_use',
-                      id: block.id + '_auto_read',
-                      name: 'computer',
-                      input: { action: 'read_page', filter: 'interactive' },
-                    };
-                    const readResult = await executeTool(readBlock);
+try {
+                     const readBlock: ToolUseBlock = {
+                       type: 'tool_use',
+                       id: block.id + '_auto_read',
+                       name: 'computer',
+                       input: { action: 'read_page', filter: 'interactive' },
+                     };
+                     const readResult = await executeTool(readBlock, steelSession);
                     const readText = readResult
                       .filter(b => b.type === 'text')
                       .map(b => (b as { type: 'text'; text: string }).text)
