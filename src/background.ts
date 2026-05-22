@@ -44,14 +44,25 @@ function maybeRecordNavigation(tabId: number, url: string) {
 let attachedTabId: number | null = null;
 
 async function getWebTabId(windowId?: number): Promise<number> {
-  // Prefer the active tab in the specific window the side panel is open in
-  const query = windowId ? { active: true, windowId } : { active: true, lastFocusedWindow: true };
-  const tabs = await chrome.tabs.query(query);
-  const tab = tabs.find(
-    t => t.url && !t.url.startsWith('chrome-extension://') && !t.url.startsWith('chrome://'),
-  );
-  if (!tab?.id) throw new Error('No active browser tab found');
-  return tab.id;
+  // Only exclude the extension's own pages; allow chrome://newtab and other chrome:// tabs
+  const isUsable = (t: chrome.tabs.Tab) =>
+    !!t.id && !!t.url && !t.url.startsWith('chrome-extension://');
+
+  if (windowId) {
+    // 1. Active tab in the specific side-panel window
+    const [active] = await chrome.tabs.query({ active: true, windowId });
+    if (active && isUsable(active)) return active.id!;
+    // 2. Any usable tab in that window (covers chrome://newtab as active tab)
+    const all = await chrome.tabs.query({ windowId });
+    const any = all.find(isUsable);
+    if (any?.id) return any.id;
+  }
+
+  // 3. Global fallback: last focused window's active tab
+  const [fallback] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (fallback && isUsable(fallback)) return fallback.id!;
+
+  throw new Error('No browser tab found. Please open a webpage first.');
 }
 
 // Issue 5+8: enable Page domain after attach; retry on transient detach errors

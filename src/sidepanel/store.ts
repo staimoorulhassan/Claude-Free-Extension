@@ -7,6 +7,7 @@ import { getRecordings, saveRecordings, recordingToText } from '@/lib/recordings
 import type { Recording } from '@/lib/recordings';
 import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
 import { getEnabledTools, executeTool } from '@/lib/tools';
+import { detectPattern, selectStrategy } from '@/lib/tokenOptimizer';
 import { createSteelManager } from '@/lib/steel-session';
 import type { SteelSession } from '@/lib/steel-client';
 
@@ -479,6 +480,7 @@ export const useStore = create<Store>((set, get) => ({
         // Issue 3: system prompt written to override model's own training about
         // "I can't browse the web". Uses imperative language + explicit denial
         // prevention to maximise compliance across GPT-4o, Gemini, Llama etc.
+        const userQueryText = (effectiveContent.find(b => b.type === 'text') as { text?: string } | undefined)?.text ?? '';
         const effectiveSystem = settings.computerUseEnabled
           ? [
               'You are a browser automation agent. You have a `computer` tool that gives you FULL, REAL control of the user\'s browser.',
@@ -503,7 +505,12 @@ export const useStore = create<Store>((set, get) => ({
               '',
               settings.systemPrompt ? `User instructions: ${settings.systemPrompt}` : '',
             ].join('\n').trim()
-          : settings.systemPrompt;
+          : (() => {
+              // Token optimizer: detect query pattern and hint response style
+              const pattern = detectPattern(userQueryText);
+              const hint = `Response style: ${selectStrategy(pattern)}.`;
+              return settings.systemPrompt ? `${settings.systemPrompt}\n\n${hint}` : hint;
+            })();
         if (effectiveSystem) body['system'] = effectiveSystem;
         if (tools.length > 0) {
           body['tools'] = tools;
