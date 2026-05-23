@@ -18,9 +18,9 @@ function injectStyles() {
   style.id = 'claude-agent-styles';
   style.textContent = `
     @keyframes claude-pulse {
-      0%   { box-shadow: inset 0 0 10px rgba(217,119,87,0.5), inset 0 0 20px rgba(217,119,87,0.3), inset 0 0 30px rgba(217,119,87,0.1); }
-      50%  { box-shadow: inset 0 0 15px rgba(217,119,87,0.7), inset 0 0 25px rgba(217,119,87,0.5), inset 0 0 35px rgba(217,119,87,0.2); }
-      100% { box-shadow: inset 0 0 10px rgba(217,119,87,0.5), inset 0 0 20px rgba(217,119,87,0.3), inset 0 0 30px rgba(217,119,87,0.1); }
+      0%   { box-shadow: inset 0 0 12px rgba(59,130,246,0.55), inset 0 0 24px rgba(59,130,246,0.35), inset 0 0 40px rgba(59,130,246,0.15), 0 0 0 2px rgba(59,130,246,0.6); }
+      50%  { box-shadow: inset 0 0 18px rgba(59,130,246,0.80), inset 0 0 32px rgba(59,130,246,0.55), inset 0 0 50px rgba(59,130,246,0.25), 0 0 0 2px rgba(59,130,246,0.9); }
+      100% { box-shadow: inset 0 0 12px rgba(59,130,246,0.55), inset 0 0 24px rgba(59,130,246,0.35), inset 0 0 40px rgba(59,130,246,0.15), 0 0 0 2px rgba(59,130,246,0.6); }
     }
   `;
   document.head.appendChild(style);
@@ -37,7 +37,7 @@ function showGlow() {
       pointer-events: none; z-index: 2147483646;
       opacity: 0; transition: opacity 0.3s ease-in-out;
       animation: claude-pulse 2s ease-in-out infinite;
-      box-shadow: inset 0 0 10px rgba(217,119,87,0.5), inset 0 0 20px rgba(217,119,87,0.3), inset 0 0 30px rgba(217,119,87,0.1);
+      box-shadow: inset 0 0 12px rgba(59,130,246,0.55), inset 0 0 24px rgba(59,130,246,0.35), inset 0 0 40px rgba(59,130,246,0.15), 0 0 0 2px rgba(59,130,246,0.6);
     `;
     document.body.appendChild(glowBorder);
   }
@@ -76,7 +76,7 @@ function showStopButton() {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 14px; font-weight: 600; cursor: pointer;
       display: inline-flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 24px rgba(217,119,87,0.3);
+      box-shadow: 0 4px 24px rgba(59,130,246,0.35);
       transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
       opacity: 0; user-select: none; pointer-events: auto; white-space: nowrap;
     `;
@@ -137,8 +137,8 @@ function moveCursor(x: number, y: number): Promise<void> {
     `;
     phantomCursor.appendChild(mkSvg('claude-phantom-cursor-plain', 'white', '#111', ''));
     phantomCursor.appendChild(mkSvg(
-      'claude-phantom-cursor-styled', '#D97757', '#FAF9F5',
-      'filter:drop-shadow(0 0 4px rgba(217,119,87,0.9)) drop-shadow(0 0 10px rgba(217,119,87,0.45));',
+      'claude-phantom-cursor-styled', '#3B82F6', '#EFF6FF',
+      'filter:drop-shadow(0 0 5px rgba(59,130,246,1)) drop-shadow(0 0 12px rgba(59,130,246,0.7)) drop-shadow(0 0 20px rgba(59,130,246,0.4));',
     ));
     document.body.appendChild(phantomCursor);
     return Promise.resolve();
