@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Free",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Multi-provider AI assistant with computer use",
   "minimum_chrome_version": "116",
   "icons": {
