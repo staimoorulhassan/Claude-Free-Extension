@@ -96,9 +96,9 @@ export interface ProviderConfig {
 }
 
 export interface SteelConfig {
-  apiKey: string;
+  apiKey?: string;
   sessionId?: string;
-  solveCaptcha: boolean;
+  solveCaptcha?: boolean;
   proxy?: {
     host: string;
     port: number;

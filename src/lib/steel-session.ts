@@ -19,7 +19,7 @@ export class SteelSessionManager {
 
   constructor(config: SteelConfig) {
     this.config = config;
-    this.client = new SteelClient({ apiKey: config.apiKey });
+    this.client = new SteelClient({ apiKey: config.apiKey ?? '' });
   }
 
   async createOrReuse(): Promise<SteelSession> {
