@@ -17,9 +17,8 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        run: git clone https://github.com/staimoorulhassan/Claude-Free-Extension.git .
 
       - uses: actions/setup-node@v4
         with:
