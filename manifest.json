@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Claude Free",
   "version": "3.2.1",
-  "description": "Multi-provider AI assistant with computer use",
+  "description": "Free AI side panel for Chrome — supports any OpenAI-compatible provider (Gemini, DeepSeek, Groq, Ollama…), full browser computer use, stealth Steel browser, and CAPTCHA solving. No Claude subscription needed.",
   "minimum_chrome_version": "116",
   "icons": {
     "128": "icon-128.png"

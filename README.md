@@ -2,19 +2,25 @@
 
 A Chrome Extension (Manifest V3) that brings a powerful AI side panel to your browser, powered by **any OpenAI-compatible provider** — completely free. No Claude subscription required.
 
-Built from scratch with React + TypeScript + Vite. Routes all requests through a built-in Anthropic↔OpenAI format adapter so you can use Gemini, DeepSeek, Qwen, Groq, Mistral, OpenRouter, Fireworks, Ollama, and more — while keeping the full Claude-style chat experience including **browser computer use**.
+Built from scratch with React + TypeScript + Vite. Routes all requests through a built-in Anthropic↔OpenAI format adapter so you can use Gemini, DeepSeek, Qwen, Groq, Mistral, OpenRouter, Fireworks, Ollama, and more — while keeping the full Claude-style chat experience including **browser computer use** and **stealth automation**.
 
 ---
 
 ## Features
 
-- **Multi-provider support** — swap AI providers without touching any code
-- **Browser computer use** — the AI can see, click, type, and navigate your browser in real time using Chrome DevTools Protocol (CDP) for trusted, native-quality input events
-- **Live visual indicators** — animated orange glow border, phantom cursor overlay, and a stop button appear during automation so you always know the AI is active
-- **Streaming responses** — full SSE streaming with incremental text rendering
+- **Multi-provider support** — swap AI providers without touching any code; per-provider API key vault stores each key separately
+- **Browser computer use** — the AI can see, click, type, scroll, and navigate your browser in real time using Chrome DevTools Protocol for trusted, native-quality input events
+- **Steel stealth browser** — routes automation through a Steel browser session to bypass bot detection and solve CAPTCHAs automatically
+- **Pre-action approval gate** — review and approve each computer-use action before it fires
+- **Action recording** — record sequences of actions as training data and replay them
+- **Token optimizer** — automatically detects query type (direct / code / detailed) and adjusts response style per request
+- **Blue glow indicators** — pulsing electric-blue border and phantom cursor appear during automation so you always know the AI is active
+- **Streaming responses** — full SSE streaming with incremental text rendering and blinking cursor
+- **Markdown rendering** — full GitHub-flavored markdown, syntax highlighting, LaTeX math, HTML/SVG preview
 - **Tool use / function calling** — Anthropic tool format translated transparently to provider equivalents
 - **Vision / image support** — paste or attach screenshots; base64 and URL images both work
 - **Conversation history** — persisted across sessions in `chrome.storage.local`
+- **Quick-prompt chips** — one-click starter prompts on the empty state screen
 - **Keyboard shortcut** — `Ctrl+E` / `Cmd+E` toggles the side panel
 - **Dark / light / auto theme**
 
@@ -25,7 +31,7 @@ Built from scratch with React + TypeScript + Vite. Routes all requests through a
 | Provider | Free Tier | Vision | Tools | Notes |
 |---|---|---|---|---|
 | **Pollinations.ai** | ✅ No key needed | ✅ | ✅ | Default — zero setup |
-| **Google Gemini** | ✅ Generous free quota | ✅ | ✅ | Get key at aistudio.google.com |
+| **Google Gemini** | ✅ Generous free quota | ✅ | ✅ | aistudio.google.com |
 | **DeepSeek** | ✅ Cheap | ❌ | ✅ | platform.deepseek.com |
 | **Alibaba Qwen** | ✅ Free tier | ✅ | ✅ | dashscope-intl.aliyuncs.com |
 | **OpenAI** | ❌ Paid | ✅ | ✅ | platform.openai.com |
@@ -42,11 +48,16 @@ Built from scratch with React + TypeScript + Vite. Routes all requests through a
 
 ## Installation
 
-### Option A — Load pre-built (easiest)
+### Option A — Instant load (no build needed)
 
-1. Download the latest release zip from [Releases](../../releases) and unzip it
+The `dist/` folder is pre-built and included in the repo.
+
+1. [Download this repo as a ZIP](../../archive/refs/heads/main.zip) and unzip it  
+   — or — `git clone https://github.com/staimoorulhassan/Claude-Free-Extension.git`
 2. Open `chrome://extensions` → enable **Developer mode**
-3. Click **Load unpacked** → select the unzipped `dist/` folder
+3. Click **Load unpacked** → select the `dist/` folder
+
+Done. No Node.js or build step required.
 
 ### Option B — Build from source
 
@@ -76,17 +87,17 @@ After each rebuild, click the reload icon on `chrome://extensions`, then reopen 
 1. Click the extension icon or press **Ctrl+E** to open the side panel
 2. Click the **Settings** gear icon
 3. Select a **Provider** from the dropdown
-4. Enter your **API Key** (leave blank for Pollinations — no key needed)
+4. Enter your **API Key** for that provider (leave blank for Pollinations — no key needed)
 5. Optionally set a custom model name
 6. Enable **Computer Use** to let the AI control your browser
 
-Your API key is stored locally in `chrome.storage.sync` and is **never sent anywhere except directly to your chosen provider**.
+Your API key is stored locally in `chrome.storage.sync` and is **never sent anywhere except directly to your chosen provider**. Each provider has its own separate key slot.
 
 ---
 
 ## Computer Use
 
-When Computer Use is enabled, the AI gains a `computer` tool with these actions:
+When Computer Use is enabled, the AI gains a `computer` tool that can control your browser tab. A pulsing blue glow border and phantom cursor appear so you can follow along in real time.
 
 | Action | Description |
 |---|---|
@@ -96,7 +107,7 @@ When Computer Use is enabled, the AI gains a `computer` tool with these actions:
 | `left_click` | Click at coordinates |
 | `click_element` | Click a labelled element by ref ID |
 | `type` | Type text into the focused field |
-| `key` | Press keyboard keys (Enter, Tab, Escape, arrows, ctrl+c…) |
+| `key` | Press keyboard keys (Enter, Tab, Escape, arrows, Ctrl+C…) |
 | `scroll` | Scroll the page |
 | `double_click` | Double-click at coordinates |
 | `right_click` | Right-click at coordinates |
@@ -110,31 +121,53 @@ Input events are dispatched via Chrome DevTools Protocol (`Input.dispatchMouseEv
 
 The AI will navigate, type, and click entirely on its own while you watch via the phantom cursor overlay.
 
+### Steel Stealth Browser
+
+Enable **Steel** in settings to route automation through a Steel browser session. This:
+- Bypasses bot detection (Cloudflare, Akamai, etc.)
+- Solves CAPTCHAs automatically
+- Makes requests appear as genuine human traffic
+
+Requires a Steel API key from [steel.dev](https://steel.dev).
+
 ---
 
 ## Architecture
 
 ```
 src/
-├── background.ts          — service worker: CDP computer use, agent lifecycle
-├── content.ts             — minimal page bridge
-├── visual-indicator.ts    — glow border + phantom cursor + stop button (content script)
+├── background.ts            — service worker: CDP computer use, tab targeting, agent lifecycle
+├── content.ts               — page bridge: recording capture
+├── visual-indicator.ts      — blue glow border + phantom cursor + stop button (content script)
 ├── lib/
-│   ├── openai-compat.ts   — Anthropic↔OpenAI format adapter + provider presets
-│   ├── computer-use.ts    — computer tool schema + background message relay
-│   ├── tools.ts           — tool registry and dispatcher
-│   ├── storage.ts         — chrome.storage helpers
-│   └── types.ts           — shared TypeScript types
+│   ├── openai-compat.ts     — Anthropic↔OpenAI format adapter + provider presets
+│   ├── computer-use.ts      — computer tool schema + background message relay
+│   ├── tools.ts             — tool registry and dispatcher
+│   ├── storage.ts           — chrome.storage helpers
+│   ├── types.ts             — shared TypeScript types
+│   ├── tokenOptimizer.ts    — query pattern detection + response style hints
+│   ├── recordings.ts        — action recording / training data capture
+│   ├── steel-session.ts     — Steel session lifecycle manager
+│   ├── steel-client.ts      — Steel Sessions API client
+│   └── steel-computer.ts    — Steel-based computer use implementation
 └── sidepanel/
-    ├── store.ts           — Zustand store + agent loop
-    ├── App.tsx            — root component
-    └── components/        — Chat, Message, MessageInput, SettingsPanel, HistoryPanel…
+    ├── store.ts             — Zustand store + agent loop + token optimizer integration
+    ├── App.tsx              — root component
+    └── components/
+        ├── Chat.tsx         — scrollable message list + quick-prompt empty state
+        ├── Message.tsx      — message renderer (markdown, tool blocks, avatar)
+        ├── MessageInput.tsx — textarea, file attach, send/stop
+        ├── SettingsPanel.tsx — provider, API key vault, computer use, Steel config
+        ├── HistoryPanel.tsx — conversation list with delete
+        └── ToolCall.tsx     — collapsible tool_use / tool_result blocks
 ```
 
 ### Request flow
 
 ```
 User message → store.sendMessage()
+    ↓
+detectPattern() → selectStrategy()     ← token optimizer: adjust system prompt
     ↓
 createOpenAICompatibleFetch()          ← src/lib/openai-compat.ts
     ↓
@@ -150,7 +183,7 @@ store parses events → Zustand state updates → React re-renders
 The agent runs a `while(true)` loop in `store.ts`:
 1. POST streaming request to `/v1/messages`
 2. Parse SSE events, accumulate text and tool-use blocks
-3. If `stop_reason === 'tool_use'` → execute tool calls via `background.ts` (CDP)
+3. If `stop_reason === 'tool_use'` → execute tool calls via `background.ts` (CDP or Steel)
 4. Append tool results as a new user message → loop
 5. Otherwise → break, save conversation
 
@@ -183,25 +216,21 @@ myprovider: {
 
 ---
 
-## Security
+## Security & Privacy
 
 - API keys are stored in `chrome.storage.sync` (encrypted by Chrome, synced across your devices)
+- Each provider has its own isolated key slot — no cross-contamination
 - Keys are transmitted only to your chosen provider's API endpoint — never to any third party
-- No telemetry, no analytics, no remote logging
+- No telemetry, no analytics, no remote logging of any kind
 - Computer use runs entirely locally via Chrome's native debugger API
-
----
-
-## Privacy
-
-This extension does not collect, transmit, or store any personal data on any server. All data (conversations, settings, API keys) stays on your local machine or in your Chrome profile sync.
+- All conversation data stays on your local machine or in your Chrome profile sync
 
 ---
 
 ## Development Commands
 
 ```bash
-npm run dev          # build + watch
+npm run dev          # build + watch (reload dist/ in Chrome after each change)
 npm run build        # production build → dist/
 npm run type-check   # TypeScript check (no emit)
 ```

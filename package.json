@@ -1,6 +1,6 @@
 {
   "name": "claude-free",
-  "version": "3.0.1",
+  "version": "3.2.1",
   "private": true,
   "scripts": {
     "dev": "vite build --watch --mode development",
