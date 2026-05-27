@@ -20,14 +20,16 @@ jobs:
 
     steps:
       - name: Checkout
-        run: git clone https://github.com/staimoorulhassan/Claude-Free-Extension.git .
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js with caching
+        uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Type check
         run: npm run type-check
