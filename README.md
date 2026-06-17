@@ -1,242 +1,178 @@
-# Claude Free Extension
+<div align="center">
 
-A Chrome Extension (Manifest V3) that brings a powerful AI side panel to your browser, powered by **any OpenAI-compatible provider** — completely free. No Claude subscription required.
+# 🤖 Claude Free Extension
 
-Built from scratch with React + TypeScript + Vite. Routes all requests through a built-in Anthropic↔OpenAI format adapter so you can use Gemini, DeepSeek, Qwen, Groq, Mistral, OpenRouter, Fireworks, Ollama, and more — while keeping the full Claude-style chat experience including **browser computer use** and **stealth automation**.
+> A Chrome side panel powered by **any free AI provider** — Gemini, DeepSeek, Groq, OpenRouter, Ollama and more. Full browser computer use included. No Claude subscription required.
 
----
+[![Version](https://img.shields.io/badge/version-3.2.1-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases/tag/v3.2.1)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
+[![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome)](https://developer.chrome.com/docs/extensions/mv3/)
+[![GitHub stars](https://img.shields.io/github/stars/staimoorulhassan/Claude-Free-Extension?style=social)](https://github.com/staimoorulhassan/Claude-Free-Extension)
+[![Last commit](https://img.shields.io/github/last-commit/staimoorulhassan/Claude-Free-Extension)](https://github.com/staimoorulhassan/Claude-Free-Extension/commits)
 
-## Features
+**The Claude chat experience — for free, in your browser, with any AI provider.**
 
-- **Multi-provider support** — swap AI providers without touching any code; per-provider API key vault stores each key separately
-- **Browser computer use** — the AI can see, click, type, scroll, and navigate your browser in real time using Chrome DevTools Protocol for trusted, native-quality input events
-- **Steel stealth browser** — routes automation through a Steel browser session to bypass bot detection and solve CAPTCHAs automatically
-- **Pre-action approval gate** — review and approve each computer-use action before it fires
-- **Action recording** — record sequences of actions as training data and replay them
-- **Token optimizer** — automatically detects query type (direct / code / detailed) and adjusts response style per request
-- **Blue glow indicators** — pulsing electric-blue border and phantom cursor appear during automation so you always know the AI is active
-- **Streaming responses** — full SSE streaming with incremental text rendering and blinking cursor
-- **Markdown rendering** — full GitHub-flavored markdown, syntax highlighting, LaTeX math, HTML/SVG preview
-- **Tool use / function calling** — Anthropic tool format translated transparently to provider equivalents
-- **Vision / image support** — paste or attach screenshots; base64 and URL images both work
-- **Conversation history** — persisted across sessions in `chrome.storage.local`
-- **Quick-prompt chips** — one-click starter prompts on the empty state screen
-- **Keyboard shortcut** — `Ctrl+E` / `Cmd+E` toggles the side panel
-- **Dark / light / auto theme**
+[🚀 Install in 60 seconds](#-quick-start) · [🎯 Supported Providers](#-supported-providers) · [🖥️ Computer Use](#️-browser-computer-use) · [📦 Releases](https://github.com/staimoorulhassan/Claude-Free-Extension/releases)
+
+</div>
 
 ---
 
-## Supported Providers
+## ✨ What is Claude Free Extension?
 
-| Provider | Free Tier | Vision | Tools | Notes |
-|---|---|---|---|---|
-| **Pollinations.ai** | ✅ No key needed | ✅ | ✅ | Default — zero setup |
-| **Google Gemini** | ✅ Generous free quota | ✅ | ✅ | aistudio.google.com |
-| **DeepSeek** | ✅ Cheap | ❌ | ✅ | platform.deepseek.com |
-| **Alibaba Qwen** | ✅ Free tier | ✅ | ✅ | dashscope-intl.aliyuncs.com |
-| **OpenAI** | ❌ Paid | ✅ | ✅ | platform.openai.com |
-| **OpenRouter** | ✅ Free models available | ✅ | ✅ | openrouter.ai |
-| **Fireworks AI** | ✅ Free credits | ✅ | ✅ | fireworks.ai |
-| **Groq** | ✅ Fast & free | ❌ | ✅ | console.groq.com |
-| **Mistral** | ✅ Free tier | ✅ | ✅ | console.mistral.ai |
-| **Kimi (Moonshot)** | ✅ Free credits | ✅ | ✅ | platform.moonshot.cn |
-| **Ollama** | ✅ Fully local | ✅ | ✅ | No key, runs on your machine |
-| **LM Studio** | ✅ Fully local | ❌ | ✅ | No key, runs on your machine |
-| **Custom** | Varies | Configurable | Configurable | Any OpenAI-compatible endpoint |
+Claude Free Extension is a **Chrome side panel** that gives you a full-featured AI assistant on any webpage — without paying for a Claude subscription. It translates between Anthropic's message format and OpenAI-compatible APIs so you can plug in **Gemini, DeepSeek, Groq, Ollama, OpenRouter** (and 8 more providers) with zero code changes.
+
+Unlike other AI extensions, it ships with **browser computer use** — the AI can literally see your screen, move the cursor, click buttons, fill forms, and navigate pages in real time using the Chrome DevTools Protocol.
 
 ---
 
-## Installation
+## 🚀 Quick Start
 
-### Option A — Instant load (no build needed)
+> **No build step needed.** The `dist/` folder is pre-compiled and committed.
 
-The `dist/` folder is pre-built and included in the repo.
+### Install (60 seconds)
 
-1. [Download this repo as a ZIP](../../archive/refs/heads/main.zip) and unzip it  
-   — or — `git clone https://github.com/staimoorulhassan/Claude-Free-Extension.git`
-2. Open `chrome://extensions` → enable **Developer mode**
-3. Click **Load unpacked** → select the `dist/` folder
+1. **Download** — clone or [download the zip](https://github.com/staimoorulhassan/Claude-Free-Extension/archive/refs/heads/main.zip) and unzip
+2. **Open Chrome** → go to `chrome://extensions`
+3. **Enable Developer Mode** (toggle in top-right)
+4. **Click "Load unpacked"** → select the `dist/` folder
+5. **Click the puzzle icon** in Chrome toolbar → pin "Claude Free"
+6. **Open any webpage** → press `Ctrl+E` (or `Cmd+E` on Mac) to open the panel
 
-Done. No Node.js or build step required.
+**Zero API key required to start** — the default provider (Pollinations.ai) works immediately with no signup.
 
-### Option B — Build from source
-
-**Requirements:** Node.js 18+
+### Optional: build from source
 
 ```bash
 git clone https://github.com/staimoorulhassan/Claude-Free-Extension.git
 cd Claude-Free-Extension
 npm install
-npm run build        # outputs to dist/
+npm run build
+# Then load the dist/ folder as described above
 ```
-
-Then load `dist/` as an unpacked extension in Chrome.
-
-For live development:
-
-```bash
-npm run dev          # watch mode — rebuilds on save
-```
-
-After each rebuild, click the reload icon on `chrome://extensions`, then reopen the side panel.
 
 ---
 
-## Quick Setup
+## 🎯 Supported Providers
 
-1. Click the extension icon or press **Ctrl+E** to open the side panel
-2. Click the **Settings** gear icon
-3. Select a **Provider** from the dropdown
-4. Enter your **API Key** for that provider (leave blank for Pollinations — no key needed)
-5. Optionally set a custom model name
-6. Enable **Computer Use** to let the AI control your browser
+Swap AI providers anytime in Settings — each provider's API key is stored separately, encrypted locally, and never sent anywhere except the chosen provider.
 
-Your API key is stored locally in `chrome.storage.sync` and is **never sent anywhere except directly to your chosen provider**. Each provider has its own separate key slot.
+| Provider | Free Tier | Vision | Tools | Notes |
+|---|---|---|---|---|
+| **Pollinations.ai** | ✅ No key needed | ✅ | ✅ | **Default — zero setup** |
+| **Google Gemini** | ✅ Generous free quota | ✅ | ✅ | [aistudio.google.com](https://aistudio.google.com) |
+| **DeepSeek** | ✅ Very cheap | ❌ | ✅ | [platform.deepseek.com](https://platform.deepseek.com) |
+| **Alibaba Qwen** | ✅ Free tier | ✅ | ✅ | dashscope-intl.aliyuncs.com |
+| **OpenAI** | ❌ Paid | ✅ | ✅ | [platform.openai.com](https://platform.openai.com) |
+| **OpenRouter** | ✅ Free models available | ✅ | ✅ | [openrouter.ai](https://openrouter.ai) |
+| **Fireworks AI** | ✅ Free credits | ✅ | ✅ | [fireworks.ai](https://fireworks.ai) |
+| **Groq** | ✅ Fast & free | ❌ | ✅ | [console.groq.com](https://console.groq.com) |
+| **Mistral** | ✅ Free tier | ✅ | ✅ | [console.mistral.ai](https://console.mistral.ai) |
+| **Kimi (Moonshot)** | ✅ Free credits | ✅ | ✅ | [platform.moonshot.cn](https://platform.moonshot.cn) |
+| **Ollama** | ✅ Fully local | ✅ | ✅ | No key, runs on your machine |
+| **LM Studio** | ✅ Fully local | ❌ | ✅ | No key, runs on your machine |
 
 ---
 
-## Computer Use
+## 🖥️ Browser Computer Use
 
-When Computer Use is enabled, the AI gains a `computer` tool that can control your browser tab. A pulsing blue glow border and phantom cursor appear so you can follow along in real time.
+The AI can **see and control your browser** in real time:
 
-| Action | Description |
+- 👁️ **Screenshot capture** — AI takes a screenshot and interprets what's on screen
+- 🖱️ **Click, type, scroll** — actions are injected via Chrome DevTools Protocol (trusted, native-quality input)
+- 🔵 **Blue glow indicator** — a pulsing electric-blue border appears around the tab and a phantom cursor follows every agent action so you always know when automation is running
+- ✅ **Pre-action approval** — review and confirm each action before it fires
+- 🥷 **Steel stealth browser** — routes automation through a Steel browser session to bypass bot detection and solve CAPTCHAs automatically
+- 📹 **Action recording** — record sequences as training data and replay them
+
+---
+
+## ✨ Features
+
+| Category | What you get |
 |---|---|
-| `screenshot` | Capture the current tab |
-| `navigate` | Go to a URL |
-| `read_page` | Get a labelled accessibility tree of the page |
-| `left_click` | Click at coordinates |
-| `click_element` | Click a labelled element by ref ID |
-| `type` | Type text into the focused field |
-| `key` | Press keyboard keys (Enter, Tab, Escape, arrows, Ctrl+C…) |
-| `scroll` | Scroll the page |
-| `double_click` | Double-click at coordinates |
-| `right_click` | Right-click at coordinates |
-| `left_click_drag` | Click and drag |
-| `wait` | Pause for a moment |
-
-Input events are dispatched via Chrome DevTools Protocol (`Input.dispatchMouseEvent`, `Input.insertText`, `Input.dispatchKeyEvent`) — these are **trusted events** that work with React apps, SPAs, and any modern web page.
-
-**Example prompt:**
-> *"Go to google.com and search for the best laptop under $1000"*
-
-The AI will navigate, type, and click entirely on its own while you watch via the phantom cursor overlay.
-
-### Steel Stealth Browser
-
-Enable **Steel** in settings to route automation through a Steel browser session. This:
-- Bypasses bot detection (Cloudflare, Akamai, etc.)
-- Solves CAPTCHAs automatically
-- Makes requests appear as genuine human traffic
-
-Requires a Steel API key from [steel.dev](https://steel.dev).
+| **AI Chat** | Streaming responses, full markdown (GFM + LaTeX + syntax highlight), tool use / function calling |
+| **Vision** | Paste screenshots, attach images; base64 and URL both work |
+| **Memory** | Conversation history persisted across sessions in `chrome.storage.local` |
+| **UX** | Dark / light / auto theme, `Ctrl+E` toggle, quick-prompt chips on empty state |
+| **Performance** | Token optimizer auto-detects query type (direct / code / detailed) and adjusts response style |
+| **Security** | Per-provider API key vault — keys encrypted locally, never synced |
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 src/
-├── background.ts            — service worker: CDP computer use, tab targeting, agent lifecycle
-├── content.ts               — page bridge: recording capture
-├── visual-indicator.ts      — blue glow border + phantom cursor + stop button (content script)
-├── lib/
-│   ├── openai-compat.ts     — Anthropic↔OpenAI format adapter + provider presets
-│   ├── computer-use.ts      — computer tool schema + background message relay
-│   ├── tools.ts             — tool registry and dispatcher
-│   ├── storage.ts           — chrome.storage helpers
-│   ├── types.ts             — shared TypeScript types
-│   ├── tokenOptimizer.ts    — query pattern detection + response style hints
-│   ├── recordings.ts        — action recording / training data capture
-│   ├── steel-session.ts     — Steel session lifecycle manager
-│   ├── steel-client.ts      — Steel Sessions API client
-│   └── steel-computer.ts    — Steel-based computer use implementation
-└── sidepanel/
-    ├── store.ts             — Zustand store + agent loop + token optimizer integration
-    ├── App.tsx              — root component
-    └── components/
-        ├── Chat.tsx         — scrollable message list + quick-prompt empty state
-        ├── Message.tsx      — message renderer (markdown, tool blocks, avatar)
-        ├── MessageInput.tsx — textarea, file attach, send/stop
-        ├── SettingsPanel.tsx — provider, API key vault, computer use, Steel config
-        ├── HistoryPanel.tsx — conversation list with delete
-        └── ToolCall.tsx     — collapsible tool_use / tool_result blocks
+├── background.ts          # Service worker — routing, provider adapter, computer-use orchestration
+├── content.ts             # Content script — page interaction, screenshot capture
+├── visual-indicator.ts    # Blue glow border + phantom cursor during automation
+├── sidepanel/             # React side panel UI (chat, settings, history)
+├── options/               # Extension options page
+└── lib/                   # Provider adapters (Anthropic ↔ OpenAI format translation)
+
+accessibility-tree.js      # Injected into MAIN world for native-quality DOM interaction
 ```
 
-### Request flow
-
-```
-User message → store.sendMessage()
-    ↓
-detectPattern() → selectStrategy()     ← token optimizer: adjust system prompt
-    ↓
-createOpenAICompatibleFetch()          ← src/lib/openai-compat.ts
-    ↓
-Intercepts Anthropic-format POST → translates to OpenAI /chat/completions
-    ↓
-OpenAI SSE response → converts back to Anthropic SSE format
-    ↓
-store parses events → Zustand state updates → React re-renders
-```
-
-### Agent loop
-
-The agent runs a `while(true)` loop in `store.ts`:
-1. POST streaming request to `/v1/messages`
-2. Parse SSE events, accumulate text and tool-use blocks
-3. If `stop_reason === 'tool_use'` → execute tool calls via `background.ts` (CDP or Steel)
-4. Append tool results as a new user message → loop
-5. Otherwise → break, save conversation
+The built-in **Anthropic↔OpenAI adapter** (`src/lib/`) is what makes all 12 providers work transparently — the rest of the codebase only speaks Anthropic message format.
 
 ---
 
-## Adding a New Provider
-
-1. Add an entry to the `PROVIDERS` table in [src/lib/openai-compat.ts](src/lib/openai-compat.ts):
-
-```typescript
-myprovider: {
-  baseURL: 'https://api.myprovider.com/v1',
-  defaultModel: 'my-model-name',
-  supportsVision: true,
-  supportsTools: true,
-  modelMap: {
-    'claude-sonnet-4-6': 'my-model-name',
-    'claude-haiku-4-5':  'my-fast-model',
-  },
-},
-```
-
-2. Add the provider's API origin to `connect-src` in [manifest.json](manifest.json):
-
-```json
-"connect-src": "... https://api.myprovider.com ..."
-```
-
-3. Rebuild: `npm run build`
-
----
-
-## Security & Privacy
-
-- API keys are stored in `chrome.storage.sync` (encrypted by Chrome, synced across your devices)
-- Each provider has its own isolated key slot — no cross-contamination
-- Keys are transmitted only to your chosen provider's API endpoint — never to any third party
-- No telemetry, no analytics, no remote logging of any kind
-- Computer use runs entirely locally via Chrome's native debugger API
-- All conversation data stays on your local machine or in your Chrome profile sync
-
----
-
-## Development Commands
+## 🔧 Development
 
 ```bash
-npm run dev          # build + watch (reload dist/ in Chrome after each change)
-npm run build        # production build → dist/
-npm run type-check   # TypeScript check (no emit)
+npm run dev        # Watch mode — rebuilds dist/ on every save
+npm run build      # Production build
+npm run type-check # TypeScript check (no emit)
 ```
+
+After any build, **reload the extension** in `chrome://extensions` (click the ↻ icon on the extension card).
 
 ---
 
-## License
+## 🤝 Contributing
 
-MIT — do whatever you want with it.
+Contributions are welcome!
+
+1. Fork the repo
+2. Create a branch: `git checkout -b feat/your-feature`
+3. Make your changes and rebuild: `npm run build`
+4. Open a Pull Request
+
+Good first contributions:
+- Adding a new provider (copy an existing adapter in `src/lib/`)
+- UI improvements to the side panel
+- Improving the accessibility tree parser
+
+Good first issues are labeled [`good first issue`](https://github.com/staimoorulhassan/Claude-Free-Extension/issues?q=label%3A%22good+first+issue%22).
+
+---
+
+## 📋 Changelog
+
+| Version | Highlights |
+|---|---|
+| **v3.2.1** | Blue glow border + phantom cursor during computer use |
+| **v3.2.0** | Visual redesign, Steel stealth browser, per-provider API vault, action recording |
+| **v3.0.1** | Build fix for fresh clones (`accessibility-tree.js` committed) |
+
+Full changelog → [Releases](https://github.com/staimoorulhassan/Claude-Free-Extension/releases)
+
+---
+
+## ⚠️ License
+
+This repository currently has **no license**. Until one is added, standard copyright law applies — no one may copy, distribute, or modify this code without explicit permission. Consider adding an [MIT License](https://choosealicense.com/licenses/mit/) to make it officially open source.
+
+---
+
+<div align="center">
+
+Built by [staimoorulhassan](https://github.com/staimoorulhassan) · [Live Site](https://claude-free-extension.vercel.app)
+
+⭐ **Star this repo** if it saved you money on AI subscriptions!
+
+**Suggested GitHub Topics** (add these for discoverability):
+`chrome-extension` `ai-assistant` `browser-extension` `computer-use` `openrouter` `gemini` `free-ai` `side-panel` `typescript` `anthropic`
+
+</div>
