@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520">
+  <defs>
+    <linearGradient id="chatBubble" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f6feb;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#388bfd;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="glowBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f6feb;stop-opacity:0.8"/>
+      <stop offset="50%" style="stop-color:#58a6ff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1f6feb;stop-opacity:0.8"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="900" height="520" fill="#0d1117" rx="8" stroke="none" stroke-width="1"/>
+    <rect x="20" y="20" width="520" height="480" fill="#1c2128" rx="8" stroke="#58a6ff" stroke-width="2"/>
+    <rect x="20" y="20" width="520" height="480" fill="none" stroke="#58a6ff" stroke-width="4" rx="8" filter="url(#softGlow)" opacity="0.6"/>
+    <rect x="20" y="20" width="520" height="36" fill="#21262d" rx="8" stroke="none" stroke-width="1"/>
+    <text x="280" y="42" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#8b949e" text-anchor="middle" font-weight="normal">https://target-site.com — Shopping Cart</text>
+
+    <!-- Page content mockup -->
+    <rect x="40" y="70" width="460" height="50" fill="#161b22" rx="6" stroke="none" stroke-width="1"/>
+    <text x="280" y="100" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="16" fill="#e6edf3" text-anchor="middle" font-weight="bold">Premium Product — $49.99</text>
+
+    <rect x="40" y="135" width="200" height="200" fill="#21262d" rx="6" stroke="none" stroke-width="1"/>
+    <text x="140" y="240" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#8b949e" text-anchor="middle" font-weight="normal">[Product Image]</text>
+
+    <rect x="260" y="135" width="240" height="50" fill="#161b22" rx="6" stroke="none" stroke-width="1"/>
+    <text x="270" y="158" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#8b949e" text-anchor="start" font-weight="normal">Quantity:</text>
+    <rect x="340" y="140" width="60" height="38" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+    <text x="370" y="164" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="middle" font-weight="normal">1</text>
+
+    <rect x="260" y="200" width="240" height="40" fill="#1f6feb" rx="8" stroke="none" stroke-width="1"/>
+    <text x="380" y="225" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#fff" text-anchor="middle" font-weight="bold">Add to Cart</text>
+
+    <!-- Phantom cursor hovering on button -->
+    <circle cx="380" cy="220" r="14" fill="none" stroke="#58a6ff" stroke-width="2.5" filter="url(#glow)" opacity="0.95"/>
+    <circle cx="380" cy="220" r="5" fill="#58a6ff" filter="url(#glow)"/>
+    <text x="398" y="205" font-family="monospace" font-size="10" fill="#58a6ff" filter="url(#glow)">click</text>
+
+    <text x="280" y="420" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="13" fill="#58a6ff" text-anchor="middle" font-weight="bold">🔵 Computer Use Active</text>
+  
+    <rect x="560" y="20" width="320" height="480" fill="#161b22" rx="8" stroke="#30363d" stroke-width="1"/>
+    <rect x="560" y="20" width="320" height="44" fill="#161b22" rx="8" stroke="none" stroke-width="1"/>
+    <text x="720" y="46" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="middle" font-weight="bold">📹 Action Log</text>
+
+    <text x="580" y="86" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#58a6ff" text-anchor="start" font-weight="bold">Session: Shopping Automation</text>
+
+    <rect x="570" y="96" width="300" height="36" fill="#0d1117" rx="6" stroke="#3fb950" stroke-width="1"/>
+    <text x="580" y="110" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#3fb950" text-anchor="start" font-weight="normal">✅ Navigate to target-site.com</text>
+    <text x="580" y="126" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#8b949e" text-anchor="start" font-weight="normal">   Completed in 1.2s</text>
+
+    <rect x="570" y="140" width="300" height="36" fill="#0d1117" rx="6" stroke="#3fb950" stroke-width="1"/>
+    <text x="580" y="154" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#3fb950" text-anchor="start" font-weight="normal">✅ Find product "Premium Product"</text>
+    <text x="580" y="170" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#8b949e" text-anchor="start" font-weight="normal">   Found at coordinates (380, 200)</text>
+
+    <rect x="570" y="184" width="300" height="36" fill="#0d1117" rx="6" stroke="#58a6ff" stroke-width="2"/>
+    <text x="580" y="198" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#58a6ff" text-anchor="start" font-weight="normal">⏳ Click "Add to Cart" button</text>
+    <text x="580" y="214" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#8b949e" text-anchor="start" font-weight="normal">   Hovering... awaiting approval</text>
+
+    <rect x="570" y="228" width="300" height="36" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+    <text x="580" y="242" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#8b949e" text-anchor="start" font-weight="normal">⏸  Fill quantity field</text>
+    <text x="580" y="258" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#8b949e" text-anchor="start" font-weight="normal">   Queued</text>
+
+    <!-- Approval gate -->
+    <rect x="570" y="278" width="300" height="80" fill="#0d1117" rx="8" stroke="#d29922" stroke-width="2"/>
+    <text x="580" y="298" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#d29922" text-anchor="start" font-weight="bold">⚠️  Action Approval Required</text>
+    <text x="580" y="314" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#e6edf3" text-anchor="start" font-weight="normal">Click "Add to Cart" on shopping page</text>
+    <rect x="576" y="326" width="130" height="26" fill="#3fb950" rx="6" stroke="none" stroke-width="1"/>
+    <text x="641" y="343" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#fff" text-anchor="middle" font-weight="bold">✓ Approve</text>
+    <rect x="716" y="326" width="148" height="26" fill="#21262d" rx="6" stroke="#30363d" stroke-width="1"/>
+    <text x="790" y="343" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#8b949e" text-anchor="middle" font-weight="normal">✗ Cancel</text>
+
+    <!-- Recording indicator -->
+    <rect x="570" y="374" width="300" height="44" fill="#1a0000" rx="6" stroke="#f85149" stroke-width="1"/>
+    <circle cx="586" cy="396" r="6" fill="#f85149"/>
+    <circle cx="586" cy="396" r="6" fill="#f85149" opacity="0.5">
+      <animate attributeName="r" values="6;10;6" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.5;0;0.5" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <text x="600" y="400" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#f85149" text-anchor="start" font-weight="normal">Recording actions as training data</text>
+
+    <text x="580" y="450" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#8b949e" text-anchor="start" font-weight="normal">Export session as JSON / replay</text>
+  
+</svg>
