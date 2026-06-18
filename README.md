@@ -14,6 +14,8 @@
 
 [🚀 Install in 60 seconds](#-quick-start) · [🎯 Supported Providers](#-supported-providers) · [🖥️ Computer Use](#️-browser-computer-use) · [📦 Releases](https://github.com/staimoorulhassan/Claude-Free-Extension/releases)
 
+<img src="docs/screenshots/demo-banner.svg" width="900" alt="Claude Free Extension — hero banner"/>
+
 </div>
 
 ---
@@ -71,6 +73,22 @@ Swap AI providers anytime in Settings — each provider's API key is stored sepa
 | **Kimi (Moonshot)** | ✅ Free credits | ✅ | ✅ | [platform.moonshot.cn](https://platform.moonshot.cn) |
 | **Ollama** | ✅ Fully local | ✅ | ✅ | No key, runs on your machine |
 | **LM Studio** | ✅ Fully local | ❌ | ✅ | No key, runs on your machine |
+
+---
+
+## 📸 Screenshots
+
+<div align="center">
+
+| Chat Panel | Provider Settings |
+|---|---|
+| <img src="docs/screenshots/screenshot-1-chat.svg" width="440" alt="AI chat side panel with streaming response"/> | <img src="docs/screenshots/screenshot-2-settings.svg" width="440" alt="Provider and API key vault settings"/> |
+
+<img src="docs/screenshots/screenshot-3-computer-use.svg" width="900" alt="Browser computer use with blue glow border and action approval gate"/>
+
+> **These are design mockups.** See [docs/screenshots/SCREENSHOT-GUIDE.md](docs/screenshots/SCREENSHOT-GUIDE.md) for instructions on taking real screenshots and recording a GIF demo.
+
+</div>
 
 ---
 
