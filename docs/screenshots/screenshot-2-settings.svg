@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520">
+  <defs>
+    <linearGradient id="chatBubble" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f6feb;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#388bfd;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="glowBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f6feb;stop-opacity:0.8"/>
+      <stop offset="50%" style="stop-color:#58a6ff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1f6feb;stop-opacity:0.8"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="900" height="520" fill="#0d1117" rx="8" stroke="none" stroke-width="1"/>
+    <text x="40" y="50" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="18" fill="#e6edf3" text-anchor="start" font-weight="bold">⚙️  Settings — Provider & API Keys</text>
+    <text x="40" y="70" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="13" fill="#8b949e" text-anchor="start" font-weight="normal">Keys are stored locally and never synced</text>
+  
+      <rect x="40" y="100" width="400" height="90" fill="#161b22" rx="10" stroke="#3fb950" stroke-width="2"/>
+      <text x="60" y="128" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="start" font-weight="bold">🌸  Pollinations.ai</text>
+      <rect x="60" y="144" width="260" height="28" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+      <text x="72" y="162" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#e6edf3" text-anchor="start" font-weight="normal">No key needed</text>
+      <rect x="350" y="117" width="72" height="16" fill="#3fb950" rx="8" stroke="none" stroke-width="1"/><text x="358" y="128" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">● Active</text>
+    
+      <rect x="470" y="100" width="400" height="90" fill="#161b22" rx="10" stroke="#58a6ff" stroke-width="1"/>
+      <text x="490" y="128" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="start" font-weight="bold">💎  Google Gemini</text>
+      <rect x="490" y="144" width="260" height="28" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+      <text x="502" y="162" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#e6edf3" text-anchor="start" font-weight="normal">AIza••••••••••••</text>
+      <rect x="780" y="117" width="51" height="16" fill="#58a6ff" rx="8" stroke="none" stroke-width="1"/><text x="788" y="128" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">✓ Set</text>
+    
+      <rect x="40" y="210" width="400" height="90" fill="#161b22" rx="10" stroke="#58a6ff" stroke-width="1"/>
+      <text x="60" y="238" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="start" font-weight="bold">⚡  Groq</text>
+      <rect x="60" y="254" width="260" height="28" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+      <text x="72" y="272" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#e6edf3" text-anchor="start" font-weight="normal">gsk_••••••••••••</text>
+      <rect x="350" y="227" width="51" height="16" fill="#58a6ff" rx="8" stroke="none" stroke-width="1"/><text x="358" y="238" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">✓ Set</text>
+    
+      <rect x="470" y="210" width="400" height="90" fill="#161b22" rx="10" stroke="#30363d" stroke-width="1"/>
+      <text x="490" y="238" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="start" font-weight="bold">🔀  OpenRouter</text>
+      <rect x="490" y="254" width="260" height="28" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+      <text x="502" y="272" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#8b949e" text-anchor="start" font-weight="normal">Enter API key...</text>
+      <rect x="780" y="227" width="65" height="16" fill="#d29922" rx="8" stroke="none" stroke-width="1"/><text x="788" y="238" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">Add key</text>
+    
+      <rect x="40" y="320" width="400" height="90" fill="#161b22" rx="10" stroke="#30363d" stroke-width="1"/>
+      <text x="60" y="348" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="start" font-weight="bold">🔍  DeepSeek</text>
+      <rect x="60" y="364" width="260" height="28" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+      <text x="72" y="382" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#8b949e" text-anchor="start" font-weight="normal">Enter API key...</text>
+      <rect x="350" y="337" width="65" height="16" fill="#d29922" rx="8" stroke="none" stroke-width="1"/><text x="358" y="348" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">Add key</text>
+    
+      <rect x="470" y="320" width="400" height="90" fill="#161b22" rx="10" stroke="#3fb950" stroke-width="2"/>
+      <text x="490" y="348" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="start" font-weight="bold">🦙  Ollama (Local)</text>
+      <rect x="490" y="364" width="260" height="28" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+      <text x="502" y="382" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#e6edf3" text-anchor="start" font-weight="normal">Running on :11434</text>
+      <rect x="780" y="337" width="72" height="16" fill="#3fb950" rx="8" stroke="none" stroke-width="1"/><text x="788" y="348" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">● Active</text>
+    
+    <rect x="40" y="455" width="820" height="44" fill="#161b22" rx="8" stroke="#30363d" stroke-width="1"/>
+    <text x="56" y="472" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="14" fill="#e6edf3" text-anchor="start" font-weight="normal">🔒</text>
+    <text x="76" y="479" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#8b949e" text-anchor="start" font-weight="normal">All API keys are encrypted in chrome.storage.local and never sent to any server except your chosen provider.</text>
+  
+</svg>
