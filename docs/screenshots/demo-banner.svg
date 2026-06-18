@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320">
+  <defs>
+    <linearGradient id="chatBubble" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f6feb;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#388bfd;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="glowBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f6feb;stop-opacity:0.8"/>
+      <stop offset="50%" style="stop-color:#58a6ff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1f6feb;stop-opacity:0.8"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  
+    <rect x="0" y="0" width="1200" height="320" fill="#0d1117" rx="0" stroke="none" stroke-width="1"/>
+    <defs>
+      <radialGradient id="heroGlow" cx="50%" cy="50%" r="60%">
+        <stop offset="0%" style="stop-color:#1f6feb;stop-opacity:0.15"/>
+        <stop offset="100%" style="stop-color:#0d1117;stop-opacity:0"/>
+      </radialGradient>
+    </defs>
+    <rect width="1200" height="320" fill="url(#heroGlow)"/>
+  
+    <rect x="40" y="30" width="260" height="260" fill="#161b22" rx="12" stroke="#1f6feb" stroke-width="1.5"/>
+    <rect x="40" y="30" width="260" height="44" fill="#161b22" rx="12" stroke="none" stroke-width="1"/>
+    <rect x="40" y="70" width="260" height="4" fill="#161b22" rx="0" stroke="none" stroke-width="1"/>
+    <text x="170" y="56" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="13" fill="#e6edf3" text-anchor="middle" font-weight="bold">🤖 Claude Free</text>
+    <rect x="40" y="30" width="260" height="260" fill="none" stroke="#58a6ff" stroke-width="2" rx="12" filter="url(#softGlow)" opacity="0.4"/>
+
+    <rect x="52" y="82" width="236" height="50" fill="#1f2937" rx="8" stroke="none" stroke-width="1"/>
+    <text x="64" y="99" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#e6edf3" text-anchor="start" font-weight="normal">Summarize this page and</text>
+    <text x="64" y="113" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#e6edf3" text-anchor="start" font-weight="normal">highlight action items</text>
+    <text x="64" y="127" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="9" fill="#58a6ff" text-anchor="start" font-weight="normal">                          ▶ Send</text>
+
+    <rect x="52" y="140" width="216" height="70" fill="#0d1117" rx="8" stroke="#30363d" stroke-width="1"/>
+    <text x="62" y="156" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#58a6ff" text-anchor="start" font-weight="bold">✦ Summary:</text>
+    <text x="62" y="172" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#8b949e" text-anchor="start" font-weight="normal">• 3 action items found</text>
+    <text x="62" y="186" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#8b949e" text-anchor="start" font-weight="normal">• Meeting at 3pm tomorrow</text>
+    <text x="62" y="200" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#8b949e" text-anchor="start" font-weight="normal">• Reply to John by Friday</text>
+
+    <text x="64" y="240" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="9" fill="#8b949e" text-anchor="start" font-weight="normal">💡 Pollinations.ai  ·  Free  ·  No key</text>
+    <text x="64" y="258" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="9" fill="#3fb950" text-anchor="start" font-weight="normal">✦ Vision  ✦ Tools  ✦ Streaming</text>
+  
+    <text x="600" y="100" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="32" fill="#e6edf3" text-anchor="middle" font-weight="bold">Claude Free Extension</text>
+    <text x="600" y="136" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="18" fill="#8b949e" text-anchor="middle" font-weight="normal">Full AI side panel for Chrome.</text>
+    <text x="600" y="160" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="18" fill="#8b949e" text-anchor="middle" font-weight="normal">Any provider. Zero subscription.</text>
+
+    <rect x="478" y="189" width="226" height="16" fill="#3fb950" rx="8" stroke="none" stroke-width="1"/><text x="486" y="200" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">✅ Pollinations — No key needed</text>
+    <rect x="700" y="189" width="142" height="16" fill="#58a6ff" rx="8" stroke="none" stroke-width="1"/><text x="708" y="200" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">✅ Gemini Free Tier</text>
+    <rect x="478" y="219" width="191" height="16" fill="#bc8cff" rx="8" stroke="none" stroke-width="1"/><text x="486" y="230" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">⚡ Groq — Fastest free LLM</text>
+    <rect x="700" y="219" width="184" height="16" fill="#d29922" rx="8" stroke="none" stroke-width="1"/><text x="708" y="230" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#fff" text-anchor="start" font-weight="bold">🖥️ Browser Computer Use</text>
+
+    <text x="600" y="280" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="13" fill="#8b949e" text-anchor="middle" font-weight="normal">chrome://extensions  →  Load unpacked  →  dist/</text>
+    <text x="600" y="300" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="12" fill="#58a6ff" text-anchor="middle" font-weight="normal">                          Install in 60 seconds</text>
+  
+    <rect x="900" y="30" width="260" height="260" fill="#161b22" rx="12" stroke="#30363d" stroke-width="1"/>
+    <rect x="900" y="30" width="260" height="44" fill="#161b22" rx="12" stroke="none" stroke-width="1"/>
+    <rect x="900" y="70" width="260" height="4" fill="#161b22" rx="0" stroke="none" stroke-width="1"/>
+    <text x="1030" y="56" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="13" fill="#e6edf3" text-anchor="middle" font-weight="bold">⚙️ Providers</text>
+
+    
+        <rect x="910" y="88" width="240" height="30" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+        <text x="922" y="107" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#e6edf3" text-anchor="start" font-weight="normal">🌸 Pollinations.ai</text>
+        <text x="1138" y="107" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#3fb950" text-anchor="end" font-weight="bold">FREE ●</text>
+      
+        <rect x="910" y="126" width="240" height="30" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+        <text x="922" y="145" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#e6edf3" text-anchor="start" font-weight="normal">💎 Google Gemini</text>
+        <text x="1138" y="145" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#3fb950" text-anchor="end" font-weight="bold">FREE ●</text>
+      
+        <rect x="910" y="164" width="240" height="30" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+        <text x="922" y="183" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#e6edf3" text-anchor="start" font-weight="normal">⚡ Groq</text>
+        <text x="1138" y="183" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#bc8cff" text-anchor="end" font-weight="bold">FAST ●</text>
+      
+        <rect x="910" y="202" width="240" height="30" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+        <text x="922" y="221" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#e6edf3" text-anchor="start" font-weight="normal">🔀 OpenRouter</text>
+        <text x="1138" y="221" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#58a6ff" text-anchor="end" font-weight="bold">SET ●</text>
+      
+        <rect x="910" y="240" width="240" height="30" fill="#0d1117" rx="6" stroke="#30363d" stroke-width="1"/>
+        <text x="922" y="259" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="11" fill="#e6edf3" text-anchor="start" font-weight="normal">🦙 Ollama</text>
+        <text x="1138" y="259" font-family="'SF Mono','Fira Code','Consolas',monospace" font-size="10" fill="#3fb950" text-anchor="end" font-weight="bold">LOCAL ●</text>
+      
+  
+</svg>
