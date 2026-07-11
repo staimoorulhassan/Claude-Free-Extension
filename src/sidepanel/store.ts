@@ -327,8 +327,8 @@ export async function* streamWithRetry(
       const isTimeout = msg.includes('timeout') || msg.includes('timed out');
       const isNetworkError = msg.includes('Failed to fetch') || msg.includes('network') || msg.includes('ERR_');
       const isRetryable = 
-        msg.includes('400') || msg.includes('429') || msg.includes('500') || 
-        msg.includes('503') || msg.includes('Provider') || isNetworkError || isTimeout;
+        msg.includes('429') || msg.includes('500') || msg.includes('502') || 
+        msg.includes('503') || msg.includes('504') || msg.includes('Provider') || isNetworkError || isTimeout;
       
       if (isAbort) throw e; // Never retry abort
       if (attempt === maxAttempts - 1) throw e; // Last attempt, throw
