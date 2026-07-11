@@ -6,8 +6,7 @@
     "dev": "vite build --watch --mode development",
     "build": "vite build",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test": "node --test tests/"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
