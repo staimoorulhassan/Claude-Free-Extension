@@ -19,7 +19,7 @@ Upgrade the extension's automation core to a CDP-driven Perceive → Plan → Ac
 
 | Tool Name | Parameters | Purpose & Verification |
 | --- | --- | --- |
-| `navigate` | `url: string` | Loads a target URL. Verifies via `DOMContentReady` event. |
+| `navigate` | `url: string` | Loads a target URL. Verifies via `DOMContentLoaded` event. |
 | `click_element` | `selector: string`, `text_hint?: string` | Clicks target element using CDP simulation. Retries if stale. |
 | `type_text` | `selector: string`, `text: string`, `submit?: boolean` | Types text with simulated keystroke delays. Optionally hits Enter. |
 | `read_page_state` | `include_vision?: boolean` | Returns pruned DOM accessibility tree and console error logs. |
