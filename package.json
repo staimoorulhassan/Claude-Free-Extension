@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "node --test tests/"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
