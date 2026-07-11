@@ -91,8 +91,14 @@ function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
 // read_page_state/read_page (format: `role "accessible-name" [ref_id] ...` per line).
 // Used to auto-dismiss cookie banners/modals blocking a click_element target without
 // a full extra model round-trip.
-
-const DISMISS_PATTERNS = /accept all|accept cookies|^accept$|i agree|got it|no thanks|dismiss|^close$|^ok$|×/i;
+//
+// IMPORTANT: only neutral close/decline patterns are auto-clicked. Consent-granting
+// actions ("Accept all", "I agree", "Got it" — commonly a cookie-banner CTA — and any
+// other affirmative acceptance) are deliberately excluded: autonomously granting
+// cookie/terms consent on the user's behalf is a real privacy/consent action, not a
+// harmless UI dismissal, and must go through the normal ask_user/approval path
+// instead. "no thanks" is safe to auto-click — it *declines* consent.
+const DISMISS_PATTERNS = /no thanks|dismiss|^close$|^ok$|×/i;
 
 function findDismissRefId(pageContent: string): string | null {
   for (const line of pageContent.split('\n')) {
