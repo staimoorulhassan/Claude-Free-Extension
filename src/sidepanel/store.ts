@@ -5,7 +5,7 @@ import { getSettings, saveSettings, getConversations, saveConversations, generat
 import type { ProviderVault } from '@/lib/storage';
 import { getRecordings, saveRecordings, recordingToText } from '@/lib/recordings';
 import type { Recording } from '@/lib/recordings';
-import { createOpenAICompatibleFetch, resolveContextWindow } from '@/lib/openai-compat';
+import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
 import { getEnabledTools, executeTool } from '@/lib/tools';
 import { detectPattern, selectStrategy } from '@/lib/tokenOptimizer';
 import { createSteelManager } from '@/lib/steel-session';
@@ -167,16 +167,13 @@ function compressBlock(block: ContentBlock, keepImage: boolean, maxTextChars: nu
   };
 }
 
-function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false, contextWindow?: number): AnthropicMessage[] {
+export function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false): AnthropicMessage[] {
   // Issue 10: drop empty assistant placeholder messages (failed streams)
   const noEmpty = messages.filter(msg =>
     !(msg.role === 'assistant' && Array.isArray(msg.content) && msg.content.length === 0)
   );
 
-  const { maxMessages, maxTextChars } = computeEffectiveLimits(contextWindow);
-  if (debugMode && contextWindow) {
-    console.log(`[Context Compression] contextWindow=${contextWindow} → maxMessages=${maxMessages}, maxTextChars=${maxTextChars}`);
-  }
+  const { maxMessages, maxTextChars } = computeEffectiveLimits();
 
   // Sliding window
   const windowed = noEmpty.length > maxMessages
@@ -240,7 +237,7 @@ async function generateConversationTitle(
   return (data.content?.[0]?.text ?? '').trim().replace(/^["']|["']$/g, '').slice(0, 60);
 }
 
-async function* streamMessages(
+export async function* streamMessages(
   body: Record<string, unknown>,
   customFetch: typeof fetch,
   signal: AbortSignal,
@@ -266,84 +263,41 @@ async function* streamMessages(
   const dec = new TextDecoder();
   let buf = '';
   let lineNum = 0;
-  let receivedMessageStop = false;
 
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) {
-        // Process any remaining buffered data before exit
-        if (buf.trim()) {
-          const t = buf.trim();
-          if (t.startsWith('data:')) {
-            const raw = t.slice(5).trim();
-            if (raw !== '[DONE]') {
-              try {
-                const parsed = JSON.parse(raw) as AnthropicStreamEvent;
-                if (parsed.type) {
-                  if (parsed.type === 'message_stop') receivedMessageStop = true;
-                  yield parsed;
-                }
-              } catch (e) {
-                if (debugMode) console.warn(`[SSE final buffer] Failed to parse: "${raw.slice(0, 80)}"`, e);
-              }
-            }
-          }
-        }
-
-        // Verify we received a proper terminal event
-        if (!receivedMessageStop) {
-          throw new Error('Stream ended without message_stop event (connection interrupted)');
-        }
-        break;
-      }
-
+      if (done) break;
+      
       buf += dec.decode(value, { stream: true });
       const lines = buf.split('\n');
       buf = lines.pop() ?? '';
-
+      
       for (const line of lines) {
         lineNum++;
         const t = line.trim();
-
+        
         // Skip empty lines and comments
         if (!t || t.startsWith(':')) continue;
-
+        
         // Only process data: lines
         if (!t.startsWith('data:')) continue;
-
+        
         const raw = t.slice(5).trim();
-
+        
         // Skip [DONE] marker
         if (raw === '[DONE]') continue;
-
+        
         try {
           // Validate JSON before yielding
           const parsed = JSON.parse(raw) as AnthropicStreamEvent;
-
-          // Validate event type and required fields
+          
+          // Basic schema validation
           if (!parsed.type) {
             if (debugMode) console.warn(`[SSE line ${lineNum}] Missing 'type' field`);
             continue;
           }
-
-          // Verify supported event types and their required fields
-          const validTypes = ['message_start', 'message_delta', 'message_stop', 'content_block_start', 'content_block_delta', 'content_block_stop', 'error'];
-          if (!validTypes.includes(parsed.type)) {
-            if (debugMode) console.warn(`[SSE line ${lineNum}] Unsupported event type: ${parsed.type}`);
-            continue;
-          }
-
-          // Validate content_block_delta has required delta field
-          if (parsed.type === 'content_block_delta') {
-            if (!parsed.delta || typeof parsed.delta !== 'object') {
-              if (debugMode) console.warn(`[SSE line ${lineNum}] content_block_delta missing or invalid 'delta' field`);
-              continue;
-            }
-          }
-
-          if (parsed.type === 'message_stop') receivedMessageStop = true;
-
+          
           yield parsed;
         } catch (e) {
           // Log but don't crash on malformed JSON
@@ -357,7 +311,7 @@ async function* streamMessages(
   }
 }
 
-async function* streamWithRetry(
+export async function* streamWithRetry(
   body: Record<string, unknown>,
   customFetch: typeof fetch,
   signal: AbortSignal,
@@ -365,8 +319,7 @@ async function* streamWithRetry(
   maxAttempts: number = 3,
 ): AsyncGenerator<AnthropicStreamEvent> {
   let lastError: Error | null = null;
-  let hasYieldedAnyEvent = false;
-
+  
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
       // Exponential backoff: 1s, 3s, 7s with jitter
@@ -376,10 +329,11 @@ async function* streamWithRetry(
       if (debugMode) console.log(`[Retry] Attempt ${attempt + 1}/${maxAttempts}, waiting ${Math.round(delayMs)}ms...`);
       await new Promise(r => setTimeout(r, delayMs));
     }
-
+    
+    let yieldedThisAttempt = false;
     try {
       for await (const ev of streamMessages(body, customFetch, signal, debugMode)) {
-        hasYieldedAnyEvent = true;
+        yieldedThisAttempt = true;
         yield ev;
       }
       if (debugMode && attempt > 0) console.log(`[Retry] Success on attempt ${attempt + 1}`);
@@ -388,30 +342,30 @@ async function* streamWithRetry(
       lastError = e as Error;
       const msg = lastError.message ?? '';
 
-      // Determine if retryable
-      const isAbort = lastError.name === 'AbortError';
-      const isTimeout = msg.includes('timeout') || msg.includes('timed out');
-      const isNetworkError = msg.includes('Failed to fetch') || msg.includes('network') || msg.includes('ERR_');
-      const isInterrupted = msg.includes('interrupted');
-      const isRetryable =
-        msg.includes('429') || msg.includes('500') || msg.includes('502') ||
-        msg.includes('503') || msg.includes('504') || msg.includes('Provider') ||
-        isNetworkError || isTimeout || isInterrupted;
-
-      // Once we've started yielding events, stop retrying to avoid replay
-      if (hasYieldedAnyEvent) {
+      // Once events have been yielded, a retry would replay them into the same
+      // assistant turn (duplicated text / tool_use blocks, double tool execution).
+      // Never retry after partial delivery.
+      if (yieldedThisAttempt) {
         if (debugMode) console.warn(`[Retry] Cannot retry after yielding events`);
         throw e;
       }
 
+      // Determine if retryable
+      const isAbort = lastError.name === 'AbortError';
+      const isTimeout = msg.includes('timeout') || msg.includes('timed out');
+      const isNetworkError = msg.includes('Failed to fetch') || msg.includes('network') || msg.includes('ERR_');
+      const isRetryable = 
+        msg.includes('429') || msg.includes('500') || msg.includes('502') || 
+        msg.includes('503') || msg.includes('504') || msg.includes('Provider') || isNetworkError || isTimeout;
+      
       if (isAbort) throw e; // Never retry abort
       if (attempt === maxAttempts - 1) throw e; // Last attempt, throw
       if (!isRetryable) throw e; // Non-retryable error, throw immediately
-
+      
       if (debugMode) console.warn(`[Retry] Stream error (attempt ${attempt + 1}): ${msg}`);
     }
   }
-
+  
   throw lastError || new Error('Unknown stream error');
 }
 
@@ -665,22 +619,18 @@ export const useStore = create<Store>((set, get) => ({
       const AGENT_TIMEOUT = 10 * 60 * 1000; // 10 minutes
       const agentStartTime = Date.now();
       let agentIteration = 0;
-      let timedOut = false;
+
       // T021: consecutive click_element failures per ref_id, scoped to this run —
       // second failure on the same ref_id escalates to ask_user instead of retrying again.
       const staleRetryCounts = new Map<string, number>();
-
-      // Set up timeout timer that aborts the controller mid-request
-      timeoutTimer = setTimeout(() => {
-        timedOut = true;
-        abortController.abort();
-        set({ error: 'Agent session timed out after 10 minutes. Long tasks may need to be split.' });
-        if (debugMode) console.log('[Agent Loop] Timeout: session exceeded 10 minutes');
-      }, AGENT_TIMEOUT);
-
+      
       while (true) {
-        // Exit if timeout was triggered
-        if (timedOut) break;
+        // Check timeout
+        if (Date.now() - agentStartTime > AGENT_TIMEOUT) {
+          set({ error: 'Agent session timed out after 10 minutes. Long tasks may need to be split.' });
+          if (debugMode) console.log('[Agent Loop] Timeout: session exceeded 10 minutes');
+          break;
+        }
 
         if (agentIteration++ >= 25) {
           set({ error: 'Agent stopped after 25 tool rounds. Try breaking the task into smaller steps.' });
@@ -709,7 +659,6 @@ export const useStore = create<Store>((set, get) => ({
         const historyMessages = compressForApi(
           toAnthropicMessages(activeConversation(get)?.messages.slice(0, -1) ?? []),
           debugMode,
-          resolveContextWindow(settings.provider),
         );
 
         const body: Record<string, unknown> = {

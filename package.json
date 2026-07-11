@@ -6,7 +6,7 @@
     "dev": "vite build --watch --mode development",
     "build": "vite build",
     "type-check": "tsc --noEmit",
-    "test": "node --test tests/"
+    "test": "vitest run"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
@@ -29,7 +29,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.5.4",
     "vite": "5.4.21",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.8"
   },
   "overrides": {
     "vite": "5.4.21"
