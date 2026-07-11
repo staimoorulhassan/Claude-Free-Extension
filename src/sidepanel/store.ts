@@ -131,6 +131,14 @@ function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false
   const head = windowed.slice(0, cutoff);
   const tail = windowed.slice(cutoff);
 
+  // If conversation is VERY long (50+ messages), use more aggressive compression
+  const isVeryLong = noEmpty.length > 50;
+  const effectiveScreenshotBudget = isVeryLong ? 1 : CTX_MAX_SCREENSHOTS;
+
+  if (isVeryLong && debugMode) {
+    console.log(`[Context Compression] Very long conversation (${noEmpty.length} msgs), reducing screenshot budget to ${effectiveScreenshotBudget}`);
+  }
+
   // Compress only the head — walk newest→oldest to count screenshots correctly
   let screenshots = 0;
   const compressedHead = [...head].reverse().map(msg => {
@@ -139,16 +147,10 @@ function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false
       if (block.type !== 'tool_result') return block;
       const hasImg = Array.isArray(block.content) && block.content.some(b => b.type === 'image');
       if (hasImg) screenshots++;
-      return compressBlock(block, hasImg && screenshots <= CTX_MAX_SCREENSHOTS);
+      return compressBlock(block, hasImg && screenshots <= effectiveScreenshotBudget);
     });
     return { ...msg, content: newContent };
   }).reverse();
-
-  // If conversation is VERY long (50+ messages), be more aggressive with compression
-  const isVeryLong = noEmpty.length > 50;
-  if (isVeryLong && debugMode) {
-    console.log(`[Context Compression] Very long conversation (${noEmpty.length} msgs), dropping older screenshots more aggressively`);
-  }
 
   return [...compressedHead, ...tail];
 }
@@ -207,41 +209,84 @@ async function* streamMessages(
   const dec = new TextDecoder();
   let buf = '';
   let lineNum = 0;
+  let receivedMessageStop = false;
 
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      
+      if (done) {
+        // Process any remaining buffered data before exit
+        if (buf.trim()) {
+          const t = buf.trim();
+          if (t.startsWith('data:')) {
+            const raw = t.slice(5).trim();
+            if (raw !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(raw) as AnthropicStreamEvent;
+                if (parsed.type) {
+                  if (parsed.type === 'message_stop') receivedMessageStop = true;
+                  yield parsed;
+                }
+              } catch (e) {
+                if (debugMode) console.warn(`[SSE final buffer] Failed to parse: "${raw.slice(0, 80)}"`, e);
+              }
+            }
+          }
+        }
+
+        // Verify we received a proper terminal event
+        if (!receivedMessageStop) {
+          throw new Error('Stream ended without message_stop event (connection interrupted)');
+        }
+        break;
+      }
+
       buf += dec.decode(value, { stream: true });
       const lines = buf.split('\n');
       buf = lines.pop() ?? '';
-      
+
       for (const line of lines) {
         lineNum++;
         const t = line.trim();
-        
+
         // Skip empty lines and comments
         if (!t || t.startsWith(':')) continue;
-        
+
         // Only process data: lines
         if (!t.startsWith('data:')) continue;
-        
+
         const raw = t.slice(5).trim();
-        
+
         // Skip [DONE] marker
         if (raw === '[DONE]') continue;
-        
+
         try {
           // Validate JSON before yielding
           const parsed = JSON.parse(raw) as AnthropicStreamEvent;
-          
-          // Basic schema validation
+
+          // Validate event type and required fields
           if (!parsed.type) {
             if (debugMode) console.warn(`[SSE line ${lineNum}] Missing 'type' field`);
             continue;
           }
-          
+
+          // Verify supported event types and their required fields
+          const validTypes = ['message_start', 'message_delta', 'message_stop', 'content_block_start', 'content_block_delta', 'content_block_stop', 'error'];
+          if (!validTypes.includes(parsed.type)) {
+            if (debugMode) console.warn(`[SSE line ${lineNum}] Unsupported event type: ${parsed.type}`);
+            continue;
+          }
+
+          // Validate content_block_delta has required delta field
+          if (parsed.type === 'content_block_delta') {
+            if (!parsed.delta || typeof parsed.delta !== 'object') {
+              if (debugMode) console.warn(`[SSE line ${lineNum}] content_block_delta missing or invalid 'delta' field`);
+              continue;
+            }
+          }
+
+          if (parsed.type === 'message_stop') receivedMessageStop = true;
+
           yield parsed;
         } catch (e) {
           // Log but don't crash on malformed JSON
@@ -263,7 +308,8 @@ async function* streamWithRetry(
   maxAttempts: number = 3,
 ): AsyncGenerator<AnthropicStreamEvent> {
   let lastError: Error | null = null;
-  
+  let hasYieldedAnyEvent = false;
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
       // Exponential backoff: 1s, 3s, 7s with jitter
@@ -273,31 +319,42 @@ async function* streamWithRetry(
       if (debugMode) console.log(`[Retry] Attempt ${attempt + 1}/${maxAttempts}, waiting ${Math.round(delayMs)}ms...`);
       await new Promise(r => setTimeout(r, delayMs));
     }
-    
+
     try {
-      for await (const ev of streamMessages(body, customFetch, signal, debugMode)) yield ev;
+      for await (const ev of streamMessages(body, customFetch, signal, debugMode)) {
+        hasYieldedAnyEvent = true;
+        yield ev;
+      }
       if (debugMode && attempt > 0) console.log(`[Retry] Success on attempt ${attempt + 1}`);
       return; // Success
     } catch (e) {
       lastError = e as Error;
       const msg = lastError.message ?? '';
-      
+
       // Determine if retryable
       const isAbort = lastError.name === 'AbortError';
       const isTimeout = msg.includes('timeout') || msg.includes('timed out');
       const isNetworkError = msg.includes('Failed to fetch') || msg.includes('network') || msg.includes('ERR_');
-      const isRetryable = 
-        msg.includes('400') || msg.includes('429') || msg.includes('500') || 
-        msg.includes('503') || msg.includes('Provider') || isNetworkError || isTimeout;
-      
+      const isInterrupted = msg.includes('interrupted');
+      const isRetryable =
+        msg.includes('429') || msg.includes('500') || msg.includes('502') ||
+        msg.includes('503') || msg.includes('504') || msg.includes('Provider') ||
+        isNetworkError || isTimeout || isInterrupted;
+
+      // Once we've started yielding events, stop retrying to avoid replay
+      if (hasYieldedAnyEvent) {
+        if (debugMode) console.warn(`[Retry] Cannot retry after yielding events`);
+        throw e;
+      }
+
       if (isAbort) throw e; // Never retry abort
       if (attempt === maxAttempts - 1) throw e; // Last attempt, throw
       if (!isRetryable) throw e; // Non-retryable error, throw immediately
-      
+
       if (debugMode) console.warn(`[Retry] Stream error (attempt ${attempt + 1}): ${msg}`);
     }
   }
-  
+
   throw lastError || new Error('Unknown stream error');
 }
 
@@ -512,19 +569,27 @@ export const useStore = create<Store>((set, get) => ({
       chrome.runtime.sendMessage({ type: 'AGENT_STARTED' }).catch(() => {});
     }
 
+    // Declare timeout timer outside try block so it's accessible in finally
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+
     try {
       // Agent loop — each iteration gets its own unique assistantId
       const AGENT_TIMEOUT = 10 * 60 * 1000; // 10 minutes
       const agentStartTime = Date.now();
       let agentIteration = 0;
-      
+      let timedOut = false;
+
+      // Set up timeout timer that aborts the controller mid-request
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        abortController.abort();
+        set({ error: 'Agent session timed out after 10 minutes. Long tasks may need to be split.' });
+        if (debugMode) console.log('[Agent Loop] Timeout: session exceeded 10 minutes');
+      }, AGENT_TIMEOUT);
+
       while (true) {
-        // Check timeout
-        if (Date.now() - agentStartTime > AGENT_TIMEOUT) {
-          set({ error: 'Agent session timed out after 10 minutes. Long tasks may need to be split.' });
-          if (debugMode) console.log('[Agent Loop] Timeout: session exceeded 10 minutes');
-          break;
-        }
+        // Exit if timeout was triggered
+        if (timedOut) break;
 
         if (agentIteration++ >= 25) {
           set({ error: 'Agent stopped after 25 tool rounds. Try breaking the task into smaller steps.' });
@@ -776,7 +841,9 @@ try {
         }));
       }
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') {
+      const wasAbort = (e as Error).name === 'AbortError';
+      // Don't show generic abort error if timeout already set the error message
+      if (!wasAbort) {
         // Issue 10: if the stream failed before producing any content, the
         // empty assistant placeholder is still in history — remove it so it
         // doesn't get sent as an invalid empty message on the next request
@@ -806,6 +873,11 @@ try {
         set({ error: display });
       }
     } finally {
+      // Clear timeout timer to avoid leaks
+      if (typeof timeoutTimer !== 'undefined' && timeoutTimer !== null) {
+        clearTimeout(timeoutTimer);
+      }
+
       set({ isStreaming: false, abortController: null });
       saveConversations(get().conversations);
 
