@@ -440,7 +440,7 @@ describe('streamWithRetry', () => {
     const controller = new AbortController();
     const gen = streamWithRetry({}, customFetch as unknown as typeof fetch, controller.signal, false, 2);
 
-    let caught: Error | null = null;
+    let caught: unknown = null;
     const consume = (async () => {
       try {
         for await (const _ of gen) { /* noop */ }
@@ -451,7 +451,7 @@ describe('streamWithRetry', () => {
     await vi.runAllTimersAsync();
     await consume;
 
-    expect(caught?.message).toMatch(/500/);
+    expect((caught as Error | null)?.message).toMatch(/500/);
     expect(customFetch).toHaveBeenCalledTimes(2);
   });
 
