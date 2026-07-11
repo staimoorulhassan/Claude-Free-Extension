@@ -1,0 +1,1 @@
+import"./chunks/modulepreload-polyfill-B5Qt9EMX.js";const e=2e4,n=chrome.runtime.connect({name:"offscreen-heartbeat"});function t(){try{n.postMessage({type:"OFFSCREEN_PING",timestamp:Date.now()})}catch{}}t();setInterval(t,e);

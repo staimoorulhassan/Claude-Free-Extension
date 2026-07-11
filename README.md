@@ -74,6 +74,8 @@ Swap AI providers anytime in Settings — each provider's API key is stored sepa
 | **Ollama** | ✅ Fully local | ✅ | ✅ | No key, runs on your machine |
 | **LM Studio** | ✅ Fully local | ❌ | ✅ | No key, runs on your machine |
 
+Each provider has an approximate **context window** used for automatic chat-history compression (Settings → Context window, overridable per-provider). Configuring a model with **Tools: ❌** (or any custom endpoint you mark as such) automatically falls back to a text-based `<tool_call>` protocol instead of native function calling, so browser automation still works — see `specs/001-claude-free-extension/contracts/messages.md` for the wire format.
+
 ---
 
 ## 📸 Screenshots
@@ -99,9 +101,14 @@ The AI can **see and control your browser** in real time:
 - 👁️ **Screenshot capture** — AI takes a screenshot and interprets what's on screen
 - 🖱️ **Click, type, scroll** — actions are injected via Chrome DevTools Protocol (trusted, native-quality input)
 - 🔵 **Blue glow indicator** — a pulsing electric-blue border appears around the tab and a phantom cursor follows every agent action so you always know when automation is running
-- ✅ **Pre-action approval** — review and confirm each action before it fires
-- 🥷 **Steel stealth browser** — routes automation through a Steel browser session to bypass bot detection and solve CAPTCHAs automatically
+- ✅ **Pre-action approval** — review and confirm each action before it fires (always required for `execute_js`, regardless of your general approval setting)
+- 🥷 **Steel stealth browser** — routes automation through a Steel browser session to bypass bot detection and solve CAPTCHAs automatically (note: the current Steel execution backend is a stub — see `specs/001-claude-free-extension/research.md` §10)
 - 📹 **Action recording** — record sequences as training data and replay them
+- 🩹 **Self-healing** — auto-dismisses cookie/consent overlays blocking a click target, then retries; falls back to asking you after two failed attempts on the same element
+- 🗂️ **Task-scoped tab groups** — when a task drives more than one tab, they're grouped and labeled (`🤖 Agent: <task>`) so it's obvious what's automated; "Terminate Task" closes exactly those tabs
+- 💾 **Crash-resilient state** — task progress is journaled to `chrome.storage.local` after every round, so a service-worker restart mid-task doesn't lose your conversation
+
+**Tool actions available to the agent**: `navigate`, `read_page_state` (accessibility tree + console/network errors + optional screenshot), `click_element`, `type_text`, `type`, `key`, `scroll`, `execute_js`, `manage_tabs`, `ask_user`, plus the original coordinate-based `left_click`/`right_click`/`double_click`/`middle_click`/`left_click_drag`/`screenshot`/`wait`/`read_page`.
 
 ---
 
