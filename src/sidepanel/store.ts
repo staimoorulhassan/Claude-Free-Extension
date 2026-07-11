@@ -74,7 +74,7 @@ function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
   return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
-// ── Context compression ────────────────────────────────────────────────────────
+// ── Context compression ───────────────────────────────────────────────────────
 // Issue 11: balanced limits — enough context for complex tasks, not so much
 // it blows provider token limits.  Runs before every API call; never mutates
 // the stored conversation.
@@ -115,7 +115,7 @@ function compressBlock(block: ContentBlock, keepImage: boolean): ContentBlock {
   };
 }
 
-function compressForApi(messages: AnthropicMessage[]): AnthropicMessage[] {
+function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false): AnthropicMessage[] {
   // Issue 10: drop empty assistant placeholder messages (failed streams)
   const noEmpty = messages.filter(msg =>
     !(msg.role === 'assistant' && Array.isArray(msg.content) && msg.content.length === 0)
@@ -143,6 +143,12 @@ function compressForApi(messages: AnthropicMessage[]): AnthropicMessage[] {
     });
     return { ...msg, content: newContent };
   }).reverse();
+
+  // If conversation is VERY long (50+ messages), be more aggressive with compression
+  const isVeryLong = noEmpty.length > 50;
+  if (isVeryLong && debugMode) {
+    console.log(`[Context Compression] Very long conversation (${noEmpty.length} msgs), dropping older screenshots more aggressively`);
+  }
 
   return [...compressedHead, ...tail];
 }
@@ -179,6 +185,7 @@ async function* streamMessages(
   body: Record<string, unknown>,
   customFetch: typeof fetch,
   signal: AbortSignal,
+  debugMode: boolean = false,
 ): AsyncGenerator<AnthropicStreamEvent> {
   const resp = await customFetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -199,19 +206,52 @@ async function* streamMessages(
   const reader = resp.body!.getReader();
   const dec = new TextDecoder();
   let buf = '';
+  let lineNum = 0;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop() ?? '';
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t.startsWith('data:')) continue;
-      const raw = t.slice(5).trim();
-      try { yield JSON.parse(raw) as AnthropicStreamEvent; } catch { /* skip */ }
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? '';
+      
+      for (const line of lines) {
+        lineNum++;
+        const t = line.trim();
+        
+        // Skip empty lines and comments
+        if (!t || t.startsWith(':')) continue;
+        
+        // Only process data: lines
+        if (!t.startsWith('data:')) continue;
+        
+        const raw = t.slice(5).trim();
+        
+        // Skip [DONE] marker
+        if (raw === '[DONE]') continue;
+        
+        try {
+          // Validate JSON before yielding
+          const parsed = JSON.parse(raw) as AnthropicStreamEvent;
+          
+          // Basic schema validation
+          if (!parsed.type) {
+            if (debugMode) console.warn(`[SSE line ${lineNum}] Missing 'type' field`);
+            continue;
+          }
+          
+          yield parsed;
+        } catch (e) {
+          // Log but don't crash on malformed JSON
+          if (debugMode) console.warn(`[SSE line ${lineNum}] Failed to parse: "${raw.slice(0, 80)}"`, e);
+          continue;
+        }
+      }
     }
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -219,22 +259,46 @@ async function* streamWithRetry(
   body: Record<string, unknown>,
   customFetch: typeof fetch,
   signal: AbortSignal,
+  debugMode: boolean = false,
+  maxAttempts: number = 3,
 ): AsyncGenerator<AnthropicStreamEvent> {
-  const maxAttempts = 3;
+  let lastError: Error | null = null;
+  
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    if (attempt > 0) {
+      // Exponential backoff: 1s, 3s, 7s with jitter
+      const baseDelay = (1 << attempt) * 1000 - 500;
+      const jitter = Math.random() * 1000;
+      const delayMs = baseDelay + jitter;
+      if (debugMode) console.log(`[Retry] Attempt ${attempt + 1}/${maxAttempts}, waiting ${Math.round(delayMs)}ms...`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+    
     try {
-      for await (const ev of streamMessages(body, customFetch, signal)) yield ev;
-      return;
+      for await (const ev of streamMessages(body, customFetch, signal, debugMode)) yield ev;
+      if (debugMode && attempt > 0) console.log(`[Retry] Success on attempt ${attempt + 1}`);
+      return; // Success
     } catch (e) {
-      const err = e as Error;
-      if (err.name === 'AbortError') throw e;
-      if (attempt === maxAttempts - 1) throw e;
-      const msg = err.message;
-      const retryable = msg.includes('400') || msg.includes('429') || msg.includes('500') || msg.includes('503') || msg.includes('Provider');
-      if (!retryable) throw e;
+      lastError = e as Error;
+      const msg = lastError.message ?? '';
+      
+      // Determine if retryable
+      const isAbort = lastError.name === 'AbortError';
+      const isTimeout = msg.includes('timeout') || msg.includes('timed out');
+      const isNetworkError = msg.includes('Failed to fetch') || msg.includes('network') || msg.includes('ERR_');
+      const isRetryable = 
+        msg.includes('400') || msg.includes('429') || msg.includes('500') || 
+        msg.includes('503') || msg.includes('Provider') || isNetworkError || isTimeout;
+      
+      if (isAbort) throw e; // Never retry abort
+      if (attempt === maxAttempts - 1) throw e; // Last attempt, throw
+      if (!isRetryable) throw e; // Non-retryable error, throw immediately
+      
+      if (debugMode) console.warn(`[Retry] Stream error (attempt ${attempt + 1}): ${msg}`);
     }
   }
+  
+  throw lastError || new Error('Unknown stream error');
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -442,6 +506,7 @@ export const useStore = create<Store>((set, get) => ({
 
     const customFetch = createOpenAICompatibleFetch(settings.provider);
     const tools = getEnabledTools(settings.computerUseEnabled);
+    const debugMode = (settings as any).debugMode ?? false;
 
     if (settings.computerUseEnabled) {
       chrome.runtime.sendMessage({ type: 'AGENT_STARTED' }).catch(() => {});
@@ -449,12 +514,29 @@ export const useStore = create<Store>((set, get) => ({
 
     try {
       // Agent loop — each iteration gets its own unique assistantId
+      const AGENT_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+      const agentStartTime = Date.now();
       let agentIteration = 0;
+      
       while (true) {
-        if (agentIteration++ >= 25) {
-          set({ error: 'Agent stopped after 25 tool rounds. Try breaking the task into smaller steps.' });
+        // Check timeout
+        if (Date.now() - agentStartTime > AGENT_TIMEOUT) {
+          set({ error: 'Agent session timed out after 10 minutes. Long tasks may need to be split.' });
+          if (debugMode) console.log('[Agent Loop] Timeout: session exceeded 10 minutes');
           break;
         }
+
+        if (agentIteration++ >= 25) {
+          set({ error: 'Agent stopped after 25 tool rounds. Try breaking the task into smaller steps.' });
+          if (debugMode) console.log('[Agent Loop] Max iterations reached');
+          break;
+        }
+
+        if (debugMode) {
+          const historyLen = activeConversation(get)?.messages.length ?? 0;
+          console.log(`[Agent Loop] Iteration ${agentIteration}, history length: ${historyLen}, elapsed: ${Math.round((Date.now() - agentStartTime) / 1000)}s`);
+        }
+
         // Fresh ID for THIS turn's assistant message
         const assistantId = generateId();
 
@@ -470,6 +552,7 @@ export const useStore = create<Store>((set, get) => ({
         // then compress (drop old screenshots, truncate big tool results, sliding window)
         const historyMessages = compressForApi(
           toAnthropicMessages(activeConversation(get)?.messages.slice(0, -1) ?? []),
+          debugMode,
         );
 
         const body: Record<string, unknown> = {
@@ -524,7 +607,7 @@ export const useStore = create<Store>((set, get) => ({
         let currentToolBlock: ContentBlock | null = null;
         let stopReason = 'end_turn';
 
-        for await (const event of streamWithRetry(body, customFetch, abortController.signal)) {
+        for await (const event of streamWithRetry(body, customFetch, abortController.signal, debugMode)) {
           if (event.type === 'content_block_start') {
             const cb = event.content_block;
             if (cb.type === 'text') {
