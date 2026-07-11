@@ -45,6 +45,7 @@ export default defineConfig({
       input: {
         sidepanel: resolve(__dirname, 'sidepanel.html'),
         options: resolve(__dirname, 'options.html'),
+        offscreen: resolve(__dirname, 'offscreen.html'),
         background: resolve(__dirname, 'src/background.ts'),
         content: resolve(__dirname, 'src/content.ts'),
         'visual-indicator': resolve(__dirname, 'src/visual-indicator.ts'),

@@ -3,6 +3,79 @@
  * and CDP-based computer use execution.
  */
 
+import { createOrJoinGroup, setGroupState, getGroupId, forgetGroup } from './lib/tabGroups';
+import {
+  newJournal, writeJournal, readJournal,
+  findInProgressJournals, resolveJournalOnStartup,
+} from './lib/journal';
+import type { ExecutionJournal } from './lib/types';
+
+// ── Offscreen keepalive lifecycle (T033/T034) ────────────────────────────────────
+// Created lazily on the first active task, closed once no journal is in_progress —
+// not held open at all times, so an idle extension has zero extra background cost.
+
+let offscreenReady: Promise<void> | null = null;
+
+async function ensureOffscreenDocument(): Promise<void> {
+  if (offscreenReady) return offscreenReady;
+  offscreenReady = (async () => {
+    const existing = await chrome.runtime.getContexts?.({ contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT] }).catch(() => []) ?? [];
+    if (existing.length > 0) return;
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: [chrome.offscreen.Reason.BLOBS], // closest available justification for a long-lived keepalive port
+      justification: 'Keep the service worker alive during a long-running agent task (spec 001-claude-free-extension US3).',
+    });
+  })();
+  try {
+    await offscreenReady;
+  } catch {
+    offscreenReady = null; // allow retry on the next task if creation failed
+  }
+}
+
+async function closeOffscreenDocumentIfIdle(): Promise<void> {
+  const stillActive = await findInProgressJournals();
+  if (stillActive.length > 0) return;
+  try {
+    await chrome.offscreen.closeDocument();
+  } catch { /* already closed, or never opened */ }
+  offscreenReady = null;
+}
+
+// ── Resume-on-startup (T036/T037) ─────────────────────────────────────────────────
+// Service workers re-run their top-level module code on every wake, including after
+// an MV3 idle-termination restart — this IS the "auto-hydration on restart" hook.
+
+async function resumeInProgressTasksOnStartup(): Promise<void> {
+  const journals = await findInProgressJournals();
+  for (const journal of journals) {
+    const { journal: resolved, resumed } = await resolveJournalOnStartup(journal, verifyJournalTabExists);
+    if (resumed) {
+      chrome.runtime.sendMessage({ type: 'TASK_RESUMED', taskId: resolved.taskId, fromRound: resolved.roundCount }).catch(() => {});
+      // No sidepanel may be listening yet — the conversation history is safely on
+      // disk regardless, so a later-opened sidepanel can still recover it via
+      // readJournal(taskId). Fully autonomous, sidepanel-less continuation of the
+      // LLM loop itself is out of scope for this pass (see tasks.md T035 note).
+    } else {
+      chrome.runtime.sendMessage({ type: 'TASK_ORPHANED', taskId: resolved.taskId, reason: 'tab_closed' }).catch(() => {});
+    }
+  }
+  if (journals.length > 0) await ensureOffscreenDocument();
+}
+
+async function verifyJournalTabExists(journal: ExecutionJournal): Promise<boolean> {
+  if (journal.activeTabId === null) return true;
+  try {
+    await chrome.tabs.get(journal.activeTabId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+resumeInProgressTasksOnStartup().catch(() => {});
+
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.windowId) await chrome.sidePanel.open({ windowId: tab.windowId });
 });
@@ -40,8 +113,29 @@ function maybeRecordNavigation(tabId: number, url: string) {
 }
 
 // ── CDP debugger state ────────────────────────────────────────────────────────
+//
+// One debugger session per tab (not a single global) so a task can drive more than
+// one tab at once — required for multi-tab tool execution (spec 001-claude-free-extension
+// FR-005) and tab-grouped parallel extraction (FR-006-008). Each attached tab keeps its
+// own Page/Log/Network domain state; sessions are torn down on tab close/navigate-away/
+// external detach, same lifecycle the old single-global version had, just per-tab now.
 
-let attachedTabId: number | null = null;
+interface DebuggerSession {
+  attachedAt: number;
+  logNetworkEnabled: boolean;
+}
+
+const debuggerSessions = new Map<number, DebuggerSession>();
+
+function isAttached(tabId: number): boolean {
+  return debuggerSessions.has(tabId);
+}
+
+async function detachDebugger(tabId: number): Promise<void> {
+  if (!debuggerSessions.has(tabId)) return;
+  debuggerSessions.delete(tabId);
+  try { await chrome.debugger.detach({ tabId }); } catch { /* ignore */ }
+}
 
 async function getWebTabId(windowId?: number): Promise<number> {
   // Only exclude the extension's own pages; allow chrome://newtab and other chrome:// tabs
@@ -65,13 +159,11 @@ async function getWebTabId(windowId?: number): Promise<number> {
   throw new Error('No browser tab found. Please open a webpage first.');
 }
 
-// Issue 5+8: enable Page domain after attach; retry on transient detach errors
+// Issue 5+8: enable Page domain after attach; retry on transient detach errors.
+// No longer detaches other tabs first — each tab keeps its own session (T005).
+// Log/Network domain enabling is layered on in T016 (enableLogNetworkDomains, below).
 async function ensureDebugger(tabId: number): Promise<void> {
-  if (attachedTabId === tabId) return;
-  if (attachedTabId !== null && attachedTabId !== tabId) {
-    try { await chrome.debugger.detach({ tabId: attachedTabId }); } catch { /* ignore */ }
-    attachedTabId = null;
-  }
+  if (debuggerSessions.has(tabId)) return;
   // Issue 8: retry attach — handles pages that detach mid-sequence (redirects etc.)
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -83,7 +175,7 @@ async function ensureDebugger(tabId: number): Promise<void> {
       await new Promise(r => setTimeout(r, 500));
     }
   }
-  attachedTabId = tabId;
+  debuggerSessions.set(tabId, { attachedAt: Date.now(), logNetworkEnabled: false });
   // Issue 5: enable Page domain so Page.captureScreenshot and Page.loadEventFired work
   try { await chrome.debugger.sendCommand({ tabId }, 'Page.enable'); } catch { /* ignore */ }
 }
@@ -98,24 +190,150 @@ async function cdp(tabId: number, method: string, params?: Record<string, unknow
       const msg = (e as Error).message ?? '';
       const isDetach = msg.includes('detach') || msg.includes('no such') || msg.includes('No target');
       if (attempt === 1 || !isDetach) throw e;
-      attachedTabId = null; // force re-attach next attempt
+      debuggerSessions.delete(tabId); // force re-attach next attempt
       await new Promise(r => setTimeout(r, 400));
     }
   }
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (attachedTabId === tabId) attachedTabId = null;
+  debuggerSessions.delete(tabId);
+  consoleErrorsByTab.delete(tabId);
+  networkErrorsByTab.delete(tabId);
+  currentTaskOpenedTabs.delete(tabId);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (attachedTabId === tabId && changeInfo.status === 'loading') attachedTabId = null;
+  if (debuggerSessions.has(tabId) && changeInfo.status === 'loading') debuggerSessions.delete(tabId);
   if (changeInfo.url) maybeRecordNavigation(tabId, changeInfo.url);
 });
 
 chrome.debugger.onDetach.addListener((source) => {
-  if (source.tabId === attachedTabId) attachedTabId = null;
+  if (source.tabId !== undefined) debuggerSessions.delete(source.tabId);
 });
+
+// ── Console/network error capture (T016) ────────────────────────────────────────
+// Accumulated per tab since the last read_page_state call, via CDP Log/Network
+// domains — not visible to a content script (cross-origin iframes, SW-initiated
+// requests). Cleared each time read_page_state drains them.
+
+interface ConsoleErrorEntry { level: 'error' | 'warning'; text: string; timestamp: number }
+interface NetworkErrorEntry { url: string; status: number; method: string; timestamp: number }
+
+const consoleErrorsByTab = new Map<number, ConsoleErrorEntry[]>();
+const networkErrorsByTab = new Map<number, NetworkErrorEntry[]>();
+const inflightRequests = new Map<string, { url: string; method: string }>(); // requestId → info, per debugger event stream
+
+async function enableLogNetworkDomains(tabId: number): Promise<void> {
+  const session = debuggerSessions.get(tabId);
+  if (!session || session.logNetworkEnabled) return;
+  try { await chrome.debugger.sendCommand({ tabId }, 'Log.enable'); } catch { /* ignore */ }
+  try { await chrome.debugger.sendCommand({ tabId }, 'Network.enable'); } catch { /* ignore */ }
+  session.logNetworkEnabled = true;
+}
+
+chrome.debugger.onEvent.addListener((source, method, params) => {
+  const tabId = source.tabId;
+  if (tabId === undefined) return;
+
+  if (method === 'Log.entryAdded') {
+    const entry = (params as { entry?: { level?: string; text?: string; timestamp?: number } })?.entry;
+    if (entry && (entry.level === 'error' || entry.level === 'warning')) {
+      const list = consoleErrorsByTab.get(tabId) ?? [];
+      list.push({ level: entry.level, text: entry.text ?? '', timestamp: entry.timestamp ?? Date.now() });
+      consoleErrorsByTab.set(tabId, list.slice(-50)); // cap per-tab backlog
+    }
+    return;
+  }
+
+  if (method === 'Network.requestWillBeSent') {
+    const p = params as { requestId?: string; request?: { url?: string; method?: string } };
+    if (p.requestId) inflightRequests.set(p.requestId, { url: p.request?.url ?? '', method: p.request?.method ?? 'GET' });
+    return;
+  }
+
+  if (method === 'Network.responseReceived') {
+    const p = params as { requestId?: string; response?: { url?: string; status?: number } };
+    const status = p.response?.status ?? 0;
+    if (status >= 400) {
+      const info = p.requestId ? inflightRequests.get(p.requestId) : undefined;
+      const list = networkErrorsByTab.get(tabId) ?? [];
+      list.push({
+        url: p.response?.url ?? info?.url ?? '',
+        status,
+        method: info?.method ?? 'GET',
+        timestamp: Date.now(),
+      });
+      networkErrorsByTab.set(tabId, list.slice(-50));
+    }
+    return;
+  }
+
+  if (method === 'Network.loadingFailed') {
+    const p = params as { requestId?: string; errorText?: string };
+    const info = p.requestId ? inflightRequests.get(p.requestId) : undefined;
+    if (info) {
+      const list = networkErrorsByTab.get(tabId) ?? [];
+      list.push({ url: info.url, status: 0, method: info.method, timestamp: Date.now() });
+      networkErrorsByTab.set(tabId, list.slice(-50));
+    }
+  }
+});
+
+function drainErrors(tabId: number): { consoleErrors: ConsoleErrorEntry[]; networkErrors: NetworkErrorEntry[] } {
+  const consoleErrors = consoleErrorsByTab.get(tabId) ?? [];
+  const networkErrors = networkErrorsByTab.get(tabId) ?? [];
+  consoleErrorsByTab.delete(tabId);
+  networkErrorsByTab.delete(tabId);
+  return { consoleErrors, networkErrors };
+}
+
+// ── DOM settlement wait (T013) ───────────────────────────────────────────────────
+// Replaces fixed setTimeout()s after click/type/navigate with an actual
+// MutationObserver-based DOM-quiet check (bounded by a timeout so a page that
+// never goes quiet — e.g. a live-updating dashboard — can't hang the loop).
+
+async function waitForSettlement(tabId: number, opts?: { timeoutMs?: number; quietMs?: number }): Promise<void> {
+  const timeoutMs = opts?.timeoutMs ?? 3000;
+  const quietMs = opts?.quietMs ?? 500;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN' as chrome.scripting.ExecutionWorld,
+      func: (quiet: number, timeout: number) => new Promise<void>((resolve) => {
+        let lastMutation = Date.now();
+        const observer = new MutationObserver(() => { lastMutation = Date.now(); });
+        try {
+          observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+        } catch { /* documentElement not ready */ }
+        const start = Date.now();
+        const check = () => {
+          const now = Date.now();
+          if (now - lastMutation >= quiet || now - start >= timeout) {
+            observer.disconnect();
+            resolve();
+            return;
+          }
+          setTimeout(check, 100);
+        };
+        check();
+      }),
+      args: [quietMs, timeoutMs],
+    });
+  } catch {
+    // Page may have navigated away mid-wait, or script injection was blocked — fall
+    // back to a short fixed delay so callers still get a minimal settle window.
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+// ── Per-task tab tracking (T018) ─────────────────────────────────────────────────
+// Tabs opened via manage_tabs('open') during the current agent run, so 'close' can
+// refuse to close anything the task didn't create itself. Reset on AGENT_STARTED.
+
+let currentTaskOpenedTabs = new Set<number>();
+let currentTaskId: string | null = null;
+let currentTaskName = 'Task';
 
 // ── Broadcast helpers ─────────────────────────────────────────────────────────
 
@@ -175,6 +393,15 @@ interface ComputerAction {
   direction?: string;
   num_clicks?: number;
   duration?: number;
+  // ── spec 001-claude-free-extension additions ────────────────────────────────
+  selector?: string;
+  submit?: boolean;
+  include_vision?: boolean;
+  script?: string;
+  op?: 'open' | 'switch' | 'close' | 'group_status';
+  tab_id?: number;
+  prompt?: string;
+  requires_manual_action?: boolean;
 }
 
 interface ComputerToolResult {
@@ -232,13 +459,10 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
     case 'navigate': {
       const raw = action.url ?? '';
       const url = raw.startsWith('http') ? raw : `https://${raw}`;
-      if (attachedTabId === tabId) {
-        try { await chrome.debugger.detach({ tabId }); } catch { /* ignore */ }
-        attachedTabId = null;
-      }
+      if (isAttached(tabId)) await detachDebugger(tabId);
       await chrome.tabs.update(tabId, { url });
 
-      // Issue 7: wait for the tab to finish loading instead of a fixed sleep
+      // Issue 7 / T012: wait for DOMContentReady (tab status 'complete') instead of a fixed sleep
       await new Promise<void>(resolve => {
         const MAX_WAIT = 15000;
         const timer = setTimeout(resolve, MAX_WAIT);
@@ -251,8 +475,9 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
         };
         chrome.tabs.onUpdated.addListener(listener);
       });
-      // Extra settle for JS frameworks to hydrate
-      await new Promise(r => setTimeout(r, 800));
+      // T013: DOM-mutation settlement instead of a fixed extra sleep, so JS-framework
+      // hydration gets exactly as long as it actually needs (bounded by the timeout).
+      await waitForSettlement(tabId);
       return [{ type: 'text', text: `Navigated to ${url}` }];
     }
 
@@ -263,8 +488,8 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved',    x, y, button: 'none',  modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed',  x, y, button: 'left',  clickCount: 1, modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left',  clickCount: 1, modifiers: 0 });
-      // Issue 12: settle time so DOM/XHR updates before next read_page/screenshot
-      await new Promise(r => setTimeout(r, 300));
+      // Issue 12 / T013: DOM-mutation settlement instead of a fixed sleep
+      await waitForSettlement(tabId);
       return [{ type: 'text', text: `Left-clicked at (${x}, ${y})` }];
     }
 
@@ -300,6 +525,37 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
       await activateTab(tabId); // Issue 6
       await cdp(tabId, 'Input.insertText', { text: action.text ?? '' });
       return [{ type: 'text', text: `Typed: "${action.text}"` }];
+    }
+
+    case 'type_text': {
+      // T014: unlike 'type' (types into whatever already has focus), this focuses a
+      // specific element by ref-id/selector first, then types, with optional submit.
+      await activateTab(tabId);
+      const selector = action.selector ?? action.ref_id ?? '';
+      const focusResult = await chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN' as chrome.scripting.ExecutionWorld,
+        func: (id: string) => {
+          const map = (window as unknown as Record<string, unknown>).__claudeElementMap as Record<string, WeakRef<Element>> | undefined;
+          if (!map?.[id]) return { error: `Element ${id} not found. Call read_page_state first.` };
+          const el = map[id].deref();
+          if (!el) return { error: `Element ${id} no longer in DOM.` };
+          (el as HTMLElement).focus?.();
+          return { ok: true };
+        },
+        args: [selector],
+      });
+      const focusRes = focusResult[0]?.result as { ok?: boolean; error?: string } | null;
+      if (focusRes?.error) return [{ type: 'text', text: `Error: ${focusRes.error}` }];
+
+      await cdp(tabId, 'Input.insertText', { text: action.text ?? '' });
+      if (action.submit) {
+        const info = KEY_MAP['Return'];
+        await cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', key: info.key, code: info.code, text: info.text });
+        await cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', key: info.key, code: info.code });
+      }
+      await waitForSettlement(tabId);
+      return [{ type: 'text', text: `Typed "${action.text}" into ${selector}${action.submit ? ' and pressed Enter' : ''}` }];
     }
 
     case 'key': {
@@ -371,6 +627,69 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
       return [{ type: 'text', text: `Viewport: ${result?.viewport?.width}x${result?.viewport?.height}\n${result?.pageContent}` }];
     }
 
+    case 'read_page_state': {
+      // T015/T016: read_page's accessibility tree + viewport, plus console/network
+      // errors accumulated since the last call, plus an optional screenshot.
+      await ensureDebugger(tabId);
+      await enableLogNetworkDomains(tabId);
+
+      const filter = action.filter ?? 'interactive';
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN' as chrome.scripting.ExecutionWorld,
+        func: (f: string) => {
+          const fn = (window as unknown as Record<string, unknown>).__generateAccessibilityTree;
+          if (typeof fn !== 'function') {
+            return { error: 'Accessibility tree not ready. Try again after the page finishes loading.', pageContent: '', viewport: { width: window.innerWidth, height: window.innerHeight } };
+          }
+          return (fn as (f: string, d: number, c: number, r: undefined) => unknown)(f, 15, 50000, undefined);
+        },
+        args: [filter],
+      });
+      const result = results[0]?.result as { pageContent?: string; viewport?: { width: number; height: number }; error?: string } | null;
+      const { consoleErrors, networkErrors } = drainErrors(tabId);
+
+      const parts: string[] = [];
+      if (result?.error) {
+        parts.push(`Error: ${result.error}`);
+      } else {
+        parts.push(`Viewport: ${result?.viewport?.width}x${result?.viewport?.height}`);
+        if (consoleErrors.length) {
+          parts.push(`Console errors (${consoleErrors.length}): ` + consoleErrors.map(e => `[${e.level}] ${e.text}`).join(' | '));
+        }
+        if (networkErrors.length) {
+          parts.push(`Network errors (${networkErrors.length}): ` + networkErrors.map(e => `${e.method} ${e.url} → ${e.status || 'failed'}`).join(' | '));
+        }
+        parts.push(result?.pageContent ?? '');
+      }
+
+      const blocks: ComputerToolResult[] = [{ type: 'text', text: parts.join('\n') }];
+
+      if (action.include_vision) {
+        try {
+          await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' });
+          await new Promise(r => setTimeout(r, 150));
+          const metrics = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => ({
+              dpr: window.devicePixelRatio || 1,
+              w: document.documentElement.clientWidth || window.innerWidth,
+              h: document.documentElement.clientHeight || window.innerHeight,
+            }),
+          });
+          const { dpr = 1, w = 1280, h = 800 } = (metrics[0]?.result as { dpr: number; w: number; h: number }) ?? {};
+          const shot = await cdp(tabId, 'Page.captureScreenshot', {
+            format: 'jpeg', quality: 70, captureBeyondViewport: false,
+            clip: { x: 0, y: 0, width: w, height: h, scale: 1 / dpr },
+          }) as { data: string };
+          blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: shot.data } });
+          await broadcastToWebTabs({ type: 'SHOW_AFTER_TOOL_USE' });
+        } catch { /* vision is best-effort; text state above is still returned */ }
+      }
+
+      return blocks;
+    }
+
     case 'click_element': {
       await activateTab(tabId); // Issue 6
       const refId = action.ref_id ?? '';
@@ -383,25 +702,112 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
           const el = map[id].deref();
           if (!el) return { error: `Element ${id} no longer in DOM.` };
           const rect = el.getBoundingClientRect();
-          return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+          const x = Math.round(rect.left + rect.width / 2);
+          const y = Math.round(rect.top + rect.height / 2);
+          // T020: detect whether something else is actually on top at this point
+          // (cookie banners, modals) before we blindly synthesize a click there.
+          const topEl = document.elementFromPoint(x, y);
+          const obscured = !!topEl && topEl !== el && !el.contains(topEl) && !topEl.contains(el);
+          if (obscured && topEl) {
+            const desc = topEl.tagName.toLowerCase() +
+              (topEl.id ? `#${topEl.id}` : '') +
+              (topEl.textContent ? ` "${topEl.textContent.trim().slice(0, 40)}"` : '');
+            return { x, y, obscured: true, obscuredBy: desc };
+          }
+          return { x, y, obscured: false };
         },
         args: [refId],
       });
-      const res = results[0]?.result as { x?: number; y?: number; error?: string } | null;
+      const res = results[0]?.result as { x?: number; y?: number; error?: string; obscured?: boolean; obscuredBy?: string } | null;
       if (res?.error) return [{ type: 'text', text: `Error: ${res.error}` }];
+      if (res?.obscured) {
+        return [{ type: 'text', text: `Error: element ${refId} is obscured by ${res.obscuredBy}. Try dismissing the overlay first, then retry click_element.` }];
+      }
       const { x = 0, y = 0 } = res ?? {};
       await broadcastToWebTabs({ type: 'UPDATE_PHANTOM_CURSOR', x, y });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved',    x, y, button: 'none', modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed',  x, y, button: 'left', clickCount: 1, modifiers: 0 });
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1, modifiers: 0 });
-      // Issue 12: settle after element click so React/Vue state updates before next action
-      await new Promise(r => setTimeout(r, 300));
+      // Issue 12 / T013: DOM-mutation settlement instead of a fixed sleep
+      await waitForSettlement(tabId);
       return [{ type: 'text', text: `Clicked element ${refId} at (${x},${y})` }];
     }
 
     case 'wait': {
       await new Promise(r => setTimeout(r, (action.duration ?? 1) * 1000));
       return [{ type: 'text', text: `Waited ${action.duration ?? 1}s` }];
+    }
+
+    case 'execute_js': {
+      // T017: arbitrary script execution — isolated (non-MAIN) world, so agent-generated
+      // script can't reach into page globals. Caller (store.ts) always requires approval
+      // for this action regardless of the user's general approval setting (T022).
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: (src: string) => {
+            // eslint-disable-next-line no-new-func
+            const fn = new Function(src);
+            return fn();
+          },
+          args: [action.script ?? ''],
+        });
+        const value = results[0]?.result;
+        return [{ type: 'text', text: `Result: ${JSON.stringify(value) ?? 'undefined'}` }];
+      } catch (e) {
+        return [{ type: 'text', text: `Error: ${(e as Error).message}` }];
+      }
+    }
+
+    case 'manage_tabs': {
+      // T018 + T026: single-task tab tracking, now tab-group-aware (US2). A group is
+      // only created once a task opens its *second* tab (FR-006: "more than one tab") —
+      // a single-tab task stays ungrouped.
+      const op = action.op ?? 'group_status';
+
+      if (op === 'open') {
+        const raw = action.url ?? '';
+        const url = raw ? (raw.startsWith('http') ? raw : `https://${raw}`) : undefined;
+        const newTab = await chrome.tabs.create({ url, active: false });
+        if (!newTab.id) return [{ type: 'text', text: JSON.stringify({ success: false, error: 'Failed to create tab' }) }];
+
+        const wasFirstTab = currentTaskOpenedTabs.size === 1; // the one already there before this add
+        const priorFirstTabId = wasFirstTab ? [...currentTaskOpenedTabs][0] : undefined;
+        currentTaskOpenedTabs.add(newTab.id);
+
+        let groupId: number | undefined;
+        if (currentTaskId && currentTaskOpenedTabs.size > 1) {
+          groupId = await createOrJoinGroup(currentTaskId, currentTaskName, newTab.id);
+          // First time crossing the 1→2 threshold: the earlier tab also needs to join.
+          if (priorFirstTabId !== undefined) {
+            try { await chrome.tabs.group({ groupId, tabIds: [priorFirstTabId] }); } catch { /* tab may be gone */ }
+          }
+        }
+        return [{ type: 'text', text: JSON.stringify({ success: true, tabId: newTab.id, groupId }) }];
+      }
+
+      if (op === 'switch') {
+        if (action.tab_id === undefined) return [{ type: 'text', text: JSON.stringify({ success: false, error: 'tab_id required for switch' }) }];
+        await chrome.tabs.update(action.tab_id, { active: true });
+        return [{ type: 'text', text: JSON.stringify({ success: true, tabId: action.tab_id }) }];
+      }
+
+      if (op === 'close') {
+        if (action.tab_id === undefined) return [{ type: 'text', text: JSON.stringify({ success: false, error: 'tab_id required for close' }) }];
+        if (!currentTaskOpenedTabs.has(action.tab_id)) {
+          return [{ type: 'text', text: JSON.stringify({ success: false, error: 'Refusing to close a tab this task did not open' }) }];
+        }
+        await chrome.tabs.remove(action.tab_id);
+        currentTaskOpenedTabs.delete(action.tab_id);
+        return [{ type: 'text', text: JSON.stringify({ success: true, tabId: action.tab_id }) }];
+      }
+
+      // group_status
+      return [{ type: 'text', text: JSON.stringify({
+        success: true,
+        memberTabIds: [...currentTaskOpenedTabs],
+        groupId: currentTaskId ? getGroupId(currentTaskId) : undefined,
+      }) }];
     }
 
     default:
@@ -461,18 +867,72 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === 'AGENT_STARTED') {
+    currentTaskOpenedTabs = new Set(); // T018: fresh per-task tab tracking for manage_tabs
+    currentTaskId = (msg.taskId as string | undefined) ?? null;
+    currentTaskName = (msg.taskName as string | undefined) ?? 'Task';
     broadcastToWebTabs({ type: 'SHOW_AGENT_INDICATORS' });
+    if (currentTaskId) {
+      const taskId = currentTaskId;
+      (async () => {
+        await writeJournal(newJournal(taskId));
+        await ensureOffscreenDocument();
+      })().catch(() => {});
+    }
     return false;
   }
 
   if (msg.type === 'AGENT_STOPPED') {
+    // T027: group turns green (done/awaiting-approval) rather than closing —
+    // TAB_GROUP_TERMINATE (explicit user action) is what actually closes tabs.
+    if (currentTaskId) setGroupState(currentTaskId, 'done').catch(() => {});
     broadcastToWebTabs({ type: 'HIDE_AGENT_INDICATORS' });
+    if (currentTaskId) {
+      const taskId = currentTaskId;
+      (async () => {
+        const journal = await readJournal(taskId);
+        if (journal) await writeJournal({ ...journal, status: 'completed', pendingAction: null });
+        await closeOffscreenDocumentIfIdle();
+      })().catch(() => {});
+    }
     return false;
   }
 
   if (msg.type === 'STOP_AGENT') {
     chrome.runtime.sendMessage({ type: 'STOP_GENERATION' }).catch(() => {});
     return false;
+  }
+
+  if (msg.type === 'TAB_GROUP_TERMINATE') {
+    // T028: close exactly the tabs this task opened, leave everything else untouched.
+    (async () => {
+      const taskId = (msg.taskId as string | undefined) ?? currentTaskId;
+      const tabIds = [...currentTaskOpenedTabs];
+      for (const id of tabIds) {
+        try { await chrome.tabs.remove(id); } catch { /* already gone */ }
+        currentTaskOpenedTabs.delete(id);
+      }
+      if (taskId) {
+        forgetGroup(taskId);
+        const journal = await readJournal(taskId);
+        if (journal) await writeJournal({ ...journal, status: 'aborted', pendingAction: null });
+        await closeOffscreenDocumentIfIdle();
+      }
+      sendResponse({ ok: true, closedTabIds: tabIds });
+    })();
+    return true;
+  }
+
+  if (msg.type === 'TASK_ROUND_COMPLETE') {
+    // T035/T036: journal write-after-every-round. Sent by store.ts's loop (still the
+    // loop owner in this pass — see tasks.md T035 note on scope) so background.ts,
+    // which does survive independently of the sidepanel, always has the latest state
+    // on disk if it gets torn down and restarted mid-task.
+    (async () => {
+      const snapshot = msg.journal as ExecutionJournal | undefined;
+      if (snapshot) await writeJournal(snapshot);
+      sendResponse({ ok: true });
+    })();
+    return true;
   }
 
   return false;

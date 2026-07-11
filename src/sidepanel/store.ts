@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent, ToolUseBlock } from '@/lib/types';
+import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent, ToolUseBlock, ExecutionJournal } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
 import { getSettings, saveSettings, getConversations, saveConversations, generateId, generateTitle, getProviderVault, saveProviderVault } from '@/lib/storage';
 import type { ProviderVault } from '@/lib/storage';
 import { getRecordings, saveRecordings, recordingToText } from '@/lib/recordings';
 import type { Recording } from '@/lib/recordings';
-import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
+import { createOpenAICompatibleFetch, resolveContextWindow } from '@/lib/openai-compat';
 import { getEnabledTools, executeTool } from '@/lib/tools';
 import { detectPattern, selectStrategy } from '@/lib/tokenOptimizer';
 import { createSteelManager } from '@/lib/steel-session';
@@ -14,6 +14,15 @@ import type { SteelSession } from '@/lib/steel-client';
 export interface PendingApproval {
   blocks: ToolUseBlock[];
   resolve: (decision: 'approve' | 'reject' | string) => void;
+}
+
+// T019: ask_user pauses the loop until the user answers, distinct from the tool-
+// approval gate above (this is the agent proactively asking, not the user vetting
+// a planned action).
+export interface PendingAskUser {
+  prompt: string;
+  requiresManualAction: boolean;
+  resolve: (response: string) => void;
 }
 
 export type { Recording };
@@ -28,6 +37,8 @@ interface Store {
   abortController: AbortController | null;
   error: string | null;
   pendingApproval: PendingApproval | null;
+  pendingAskUser: PendingAskUser | null;
+  currentTaskId: string | null; // T024-T029: drives tab-group scoping + "Terminate Task"
   providerVault: ProviderVault;
   isRecording: boolean;
   recordings: Recording[];
@@ -48,6 +59,7 @@ interface Store {
   clearError: () => void;
   approvePending: (correction?: string) => void;
   rejectPending: () => void;
+  respondToAskUser: (response: string) => void;
   setShowRecordings: (v: boolean) => void;
   startRecording: () => Promise<void>;
   stopRecording: (name: string) => Promise<void>;
@@ -74,6 +86,31 @@ function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
   return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
+// ── Self-healing helpers (T020) ─────────────────────────────────────────────────
+// Heuristic dismiss-button finder over the accessibility-tree text produced by
+// read_page_state/read_page (format: `role "accessible-name" [ref_id] ...` per line).
+// Used to auto-dismiss cookie banners/modals blocking a click_element target without
+// a full extra model round-trip.
+//
+// IMPORTANT: only neutral close/decline patterns are auto-clicked. Consent-granting
+// actions ("Accept all", "I agree", "Got it" — commonly a cookie-banner CTA — and any
+// other affirmative acceptance) are deliberately excluded: autonomously granting
+// cookie/terms consent on the user's behalf is a real privacy/consent action, not a
+// harmless UI dismissal, and must go through the normal ask_user/approval path
+// instead. "no thanks" is safe to auto-click — it *declines* consent.
+const DISMISS_PATTERNS = /no thanks|dismiss|^close$|^ok$|×/i;
+
+function findDismissRefId(pageContent: string): string | null {
+  for (const line of pageContent.split('\n')) {
+    const nameMatch = line.match(/"([^"]*)"/);
+    const refMatch = line.match(/\[(ref_[^\]]+)\]/);
+    if (nameMatch && refMatch && DISMISS_PATTERNS.test(nameMatch[1].trim())) {
+      return refMatch[1];
+    }
+  }
+  return null;
+}
+
 // ── Context compression ───────────────────────────────────────────────────────
 // Issue 11: balanced limits — enough context for complex tasks, not so much
 // it blows provider token limits.  Runs before every API call; never mutates
@@ -84,16 +121,31 @@ const CTX_MAX_SCREENSHOTS = 2;     // keep last 2 screenshots verbatim
 const CTX_MAX_TEXT_CHARS = 8000;   // enough for most accessibility trees
 const CTX_ALWAYS_KEEP = 6;         // last 3 rounds always sent uncompressed
 
-function truncateText(text: string): string {
-  return text.length > CTX_MAX_TEXT_CHARS
-    ? text.slice(0, CTX_MAX_TEXT_CHARS) + '\n…[truncated to save context]'
+function truncateText(text: string, maxChars: number = CTX_MAX_TEXT_CHARS): string {
+  return text.length > maxChars
+    ? text.slice(0, maxChars) + '\n…[truncated to save context]'
     : text;
 }
 
-function compressBlock(block: ContentBlock, keepImage: boolean): ContentBlock {
+// T046: contextWindow-aware sliding window. Falls back to the fixed
+// CTX_MAX_MESSAGES/CTX_MAX_TEXT_CHARS heuristic (unchanged behavior) when no
+// contextWindow is known for the active provider — see research.md §9.
+function computeEffectiveLimits(contextWindow?: number): { maxMessages: number; maxTextChars: number } {
+  if (!contextWindow) return { maxMessages: CTX_MAX_MESSAGES, maxTextChars: CTX_MAX_TEXT_CHARS };
+  const HISTORY_TOKEN_BUDGET_FRACTION = 0.5; // leave room for system prompt, tool schema, response
+  const AVG_TOKENS_PER_MESSAGE = 300;        // rough heuristic, not exact
+  const tokenBudget = contextWindow * HISTORY_TOKEN_BUDGET_FRACTION;
+  const maxMessages = Math.max(10, Math.min(CTX_MAX_MESSAGES, Math.floor(tokenBudget / AVG_TOKENS_PER_MESSAGE)));
+  const maxTextChars = contextWindow < 16_000
+    ? Math.max(2000, Math.floor(CTX_MAX_TEXT_CHARS * (contextWindow / 32_000)))
+    : CTX_MAX_TEXT_CHARS;
+  return { maxMessages, maxTextChars };
+}
+
+function compressBlock(block: ContentBlock, keepImage: boolean, maxTextChars: number): ContentBlock {
   if (block.type !== 'tool_result') return block;
   if (typeof block.content === 'string') {
-    return { ...block, content: truncateText(block.content) };
+    return { ...block, content: truncateText(block.content, maxTextChars) };
   }
   if (!Array.isArray(block.content)) return block;
 
@@ -103,27 +155,32 @@ function compressBlock(block: ContentBlock, keepImage: boolean): ContentBlock {
     return {
       ...block,
       content: textParts.length > 0
-        ? textParts.map(b => b.type === 'text' ? { ...b, text: truncateText(b.text) } : b)
+        ? textParts.map(b => b.type === 'text' ? { ...b, text: truncateText(b.text, maxTextChars) } : b)
         : [{ type: 'text' as const, text: '[screenshot removed — older than last 2]' }],
     };
   }
   return {
     ...block,
     content: block.content.map(b =>
-      b.type === 'text' ? { ...b, text: truncateText(b.text) } : b
+      b.type === 'text' ? { ...b, text: truncateText(b.text, maxTextChars) } : b
     ),
   };
 }
 
-function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false): AnthropicMessage[] {
+function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false, contextWindow?: number): AnthropicMessage[] {
   // Issue 10: drop empty assistant placeholder messages (failed streams)
   const noEmpty = messages.filter(msg =>
     !(msg.role === 'assistant' && Array.isArray(msg.content) && msg.content.length === 0)
   );
 
+  const { maxMessages, maxTextChars } = computeEffectiveLimits(contextWindow);
+  if (debugMode && contextWindow) {
+    console.log(`[Context Compression] contextWindow=${contextWindow} → maxMessages=${maxMessages}, maxTextChars=${maxTextChars}`);
+  }
+
   // Sliding window
-  const windowed = noEmpty.length > CTX_MAX_MESSAGES
-    ? noEmpty.slice(-CTX_MAX_MESSAGES)
+  const windowed = noEmpty.length > maxMessages
+    ? noEmpty.slice(-maxMessages)
     : noEmpty;
 
   // Split: always-keep tail vs compressible head
@@ -147,7 +204,7 @@ function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false
       if (block.type !== 'tool_result') return block;
       const hasImg = Array.isArray(block.content) && block.content.some(b => b.type === 'image');
       if (hasImg) screenshots++;
-      return compressBlock(block, hasImg && screenshots <= effectiveScreenshotBudget);
+      return compressBlock(block, hasImg && screenshots <= effectiveScreenshotBudget, maxTextChars);
     });
     return { ...msg, content: newContent };
   }).reverse();
@@ -368,6 +425,8 @@ export const useStore = create<Store>((set, get) => ({
   abortController: null,
   error: null,
   pendingApproval: null,
+  pendingAskUser: null,
+  currentTaskId: null,
   providerVault: {},
   isRecording: false,
   recordings: [],
@@ -388,6 +447,16 @@ export const useStore = create<Store>((set, get) => ({
     set({ settings, conversations, recordings, providerVault });
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg.type === 'STOP_GENERATION') get().stopGeneration();
+      // T038/T039: background.ts found a journal on service-worker restart. Full
+      // autonomous resume of the LLM loop isn't implemented in this pass (see
+      // tasks.md T035) — surface it so the user knows their conversation state was
+      // preserved and isn't silently lost, even though they need to continue it.
+      if (msg.type === 'TASK_RESUMED') {
+        set({ error: `A task (round ${msg.fromRound}) survived a background restart — its state was preserved. Open a new message to continue it.` });
+      }
+      if (msg.type === 'TASK_ORPHANED') {
+        set({ error: `A previous task could not be resumed (its tab was closed) and was marked orphaned.` });
+      }
     });
   },
 
@@ -427,9 +496,16 @@ export const useStore = create<Store>((set, get) => ({
 
   stopGeneration: () => {
     get().abortController?.abort();
-    // Reject any pending approval so the agent loop exits cleanly
+    // Reject any pending approval / ask_user prompt so the agent loop exits cleanly
     get().pendingApproval?.resolve('reject');
-    set({ isStreaming: false, abortController: null, pendingApproval: null });
+    get().pendingAskUser?.resolve('');
+    // T029: "Terminate Task" — close exactly the tabs this task opened (scoped
+    // cleanup in background.ts), leaving pre-existing user tabs untouched.
+    const { currentTaskId } = get();
+    if (currentTaskId) {
+      chrome.runtime.sendMessage({ type: 'TAB_GROUP_TERMINATE', taskId: currentTaskId }).catch(() => {});
+    }
+    set({ isStreaming: false, abortController: null, pendingApproval: null, pendingAskUser: null, currentTaskId: null });
   },
 
   approvePending: (correction?: string) => {
@@ -444,6 +520,13 @@ export const useStore = create<Store>((set, get) => ({
     if (!pendingApproval) return;
     set({ pendingApproval: null });
     pendingApproval.resolve('reject');
+  },
+
+  respondToAskUser: (response: string) => {
+    const { pendingAskUser } = get();
+    if (!pendingAskUser) return;
+    set({ pendingAskUser: null });
+    pendingAskUser.resolve(response);
   },
 
   updateSettings: async (patch) => {
@@ -565,8 +648,13 @@ export const useStore = create<Store>((set, get) => ({
     const tools = getEnabledTools(settings.computerUseEnabled);
     const debugMode = (settings as any).debugMode ?? false;
 
+    // T024-T029: task id + name for tab-group scoping (background.ts createOrJoinGroup).
+    const taskId = generateId();
+    const taskName = (firstText || 'New task').slice(0, 60);
+
+    set({ currentTaskId: taskId });
     if (settings.computerUseEnabled) {
-      chrome.runtime.sendMessage({ type: 'AGENT_STARTED' }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'AGENT_STARTED', taskId, taskName }).catch(() => {});
     }
 
     // Declare timeout timer outside try block so it's accessible in finally
@@ -578,6 +666,9 @@ export const useStore = create<Store>((set, get) => ({
       const agentStartTime = Date.now();
       let agentIteration = 0;
       let timedOut = false;
+      // T021: consecutive click_element failures per ref_id, scoped to this run —
+      // second failure on the same ref_id escalates to ask_user instead of retrying again.
+      const staleRetryCounts = new Map<string, number>();
 
       // Set up timeout timer that aborts the controller mid-request
       timeoutTimer = setTimeout(() => {
@@ -618,6 +709,7 @@ export const useStore = create<Store>((set, get) => ({
         const historyMessages = compressForApi(
           toAnthropicMessages(activeConversation(get)?.messages.slice(0, -1) ?? []),
           debugMode,
+          resolveContextWindow(settings.provider),
         );
 
         const body: Record<string, unknown> = {
@@ -638,18 +730,23 @@ export const useStore = create<Store>((set, get) => ({
               'For clear tasks: call the computer tool directly without asking first.',
               '',
               'TOOL ACTIONS (use these in sequence):',
-              '  navigate   → go to a URL',
-              '  read_page  → get labelled interactive elements (buttons, inputs, links) with ref IDs',
-              '  click_element → click by ref ID from read_page',
-              '  type       → type text into focused input',
-              '  key        → press Return/Enter/Escape/Tab/arrow keys',
-              '  screenshot → see the page visually (use sparingly — prefer read_page)',
-              '  scroll     → scroll up/down/left/right',
-              '  wait       → wait N seconds for page to load',
+              '  navigate        → go to a URL',
+              '  read_page_state → get labelled interactive elements plus any console/network errors (prefer this over read_page)',
+              '  click_element   → click by ref ID from read_page_state',
+              '  type_text       → type into a specific field by ref ID, with optional submit',
+              '  type            → type text into whatever is already focused',
+              '  key             → press Return/Enter/Escape/Tab/arrow keys',
+              '  screenshot      → see the page visually (use sparingly — prefer read_page_state)',
+              '  scroll          → scroll up/down/left/right',
+              '  wait            → wait N seconds for page to load',
+              '  execute_js      → run custom JavaScript for complex data extraction (always asks for your approval first)',
+              '  manage_tabs     → open/switch/close tabs as part of this task',
+              '  ask_user        → pause and ask the user a question, or wait for them to handle a CAPTCHA/2FA/irreversible action',
               '',
-              'EFFICIENCY: prefer read_page → click_element over screenshot → coordinate click.',
+              'EFFICIENCY: prefer read_page_state → click_element over screenshot → coordinate click.',
               'Only take a screenshot when you must SEE something (images, charts, CAPTCHAs).',
-              'After navigate, always call read_page or wait before any click.',
+              'After navigate, always call read_page_state or wait before any click.',
+              'If click_element reports the target is obscured by an overlay, it will be auto-retried after dismissal — you don\'t need to handle that yourself.',
               '',
               settings.systemPrompt ? `User instructions: ${settings.systemPrompt}` : '',
             ].join('\n').trim()
@@ -734,8 +831,14 @@ export const useStore = create<Store>((set, get) => ({
         const toolUseBlocks = finishedBlocks.filter(b => b.type === 'tool_use') as ToolUseBlock[];
         if (!toolUseBlocks.length) break;
 
+        // T022: execute_js always requires approval regardless of settings.requireApproval —
+        // it's the one action with unbounded blast radius (arbitrary script execution).
+        const containsExecuteJs = toolUseBlocks.some(b =>
+          b.name === 'computer' && (b.input as Record<string, unknown>).action === 'execute_js'
+        );
+
         // Approval gate — pause and show pending actions to the user before executing
-        if (settings.requireApproval && settings.computerUseEnabled) {
+        if ((settings.requireApproval || containsExecuteJs) && settings.computerUseEnabled) {
           const decision = await new Promise<string>(resolve => {
             set({ pendingApproval: { blocks: toolUseBlocks, resolve } });
           });
@@ -783,23 +886,111 @@ export const useStore = create<Store>((set, get) => ({
         const { steelSession } = get();
         for (const block of toolUseBlocks) {
           try {
+            // T019: ask_user pauses the loop for a direct user response instead of
+            // going through executeTool()/background.ts at all — there's no CDP
+            // action to run, only a UI prompt to wait on.
+            if (block.name === 'computer' && (block.input as Record<string, unknown>).action === 'ask_user') {
+              const input = block.input as Record<string, unknown>;
+              const response = await new Promise<string>(resolve => {
+                set({
+                  pendingAskUser: {
+                    prompt: (input.prompt as string) ?? 'The agent needs your input.',
+                    requiresManualAction: Boolean(input.requires_manual_action),
+                    resolve,
+                  },
+                });
+              });
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: [{ type: 'text', text: response || '(no response)' }],
+              });
+              continue;
+            }
+
             const resultContent = await executeTool(block, steelSession);
 
-            // Issue 19: when click_element says the element wasn't found, auto-call
-            // read_page so the model immediately gets the current page state
             if (block.name === 'computer') {
               const act = (block.input as Record<string, unknown>).action as string;
               if (act === 'click_element') {
+                const refId = ((block.input as Record<string, unknown>).ref_id as string) ?? '';
                 const firstText = resultContent.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
-                if (firstText && (firstText.text.includes('not found') || firstText.text.includes('no longer'))) {
-try {
-                     const readBlock: ToolUseBlock = {
-                       type: 'tool_use',
-                       id: block.id + '_auto_read',
-                       name: 'computer',
-                       input: { action: 'read_page', filter: 'interactive' },
-                     };
-                     const readResult = await executeTool(readBlock, steelSession);
+                const isObscured = firstText?.text.includes('is obscured by');
+                const isStale = firstText && (firstText.text.includes('not found') || firstText.text.includes('no longer'));
+
+                // T020: obscured by an overlay — try to auto-dismiss it, then retry
+                // the original click once, before ever falling back to the model.
+                if (isObscured) {
+                  try {
+                    const stateBlock: ToolUseBlock = {
+                      type: 'tool_use', id: block.id + '_auto_state', name: 'computer',
+                      input: { action: 'read_page_state', filter: 'interactive' },
+                    };
+                    const stateResult = await executeTool(stateBlock, steelSession);
+                    const stateText = stateResult
+                      .filter(b => b.type === 'text')
+                      .map(b => (b as { type: 'text'; text: string }).text)
+                      .join('');
+                    const dismissRef = findDismissRefId(stateText);
+                    if (dismissRef) {
+                      await executeTool(
+                        { type: 'tool_use', id: block.id + '_auto_dismiss', name: 'computer', input: { action: 'click_element', ref_id: dismissRef } },
+                        steelSession,
+                      );
+                      const retryResult = await executeTool(
+                        { type: 'tool_use', id: block.id + '_retry', name: 'computer', input: { action: 'click_element', ref_id: refId } },
+                        steelSession,
+                      );
+                      const retryText = retryResult
+                        .filter(b => b.type === 'text')
+                        .map(b => (b as { type: 'text'; text: string }).text)
+                        .join('');
+                      toolResults.push({
+                        type: 'tool_result',
+                        tool_use_id: block.id,
+                        content: [{ type: 'text', text: `[Auto-dismissed an overlay (${dismissRef}), then retried] ${retryText}` }],
+                        is_error: !retryText.toLowerCase().startsWith('clicked'),
+                      });
+                      continue;
+                    }
+                  } catch { /* fall through to normal (obscured) result below */ }
+                }
+
+                // Issue 19 / T021: when click_element says the element wasn't found or
+                // is stale, auto-retry once via a fresh read; escalate to ask_user on
+                // the second consecutive failure for the same ref_id instead of
+                // retrying indefinitely.
+                if (isStale) {
+                  const failCount = (staleRetryCounts.get(refId) ?? 0) + 1;
+                  staleRetryCounts.set(refId, failCount);
+
+                  if (failCount >= 2) {
+                    const response = await new Promise<string>(resolve => {
+                      set({
+                        pendingAskUser: {
+                          prompt: `I couldn't click "${refId}" after retrying — the page may have changed unexpectedly. How should I proceed?`,
+                          requiresManualAction: false,
+                          resolve,
+                        },
+                      });
+                    });
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: block.id,
+                      content: [{ type: 'text', text: `${firstText?.text ?? 'Element click failed twice.'}\n\nUser guidance: ${response || '(no response)'}` }],
+                      is_error: true,
+                    });
+                    continue;
+                  }
+
+                  try {
+                    const readBlock: ToolUseBlock = {
+                      type: 'tool_use',
+                      id: block.id + '_auto_read',
+                      name: 'computer',
+                      input: { action: 'read_page', filter: 'interactive' },
+                    };
+                    const readResult = await executeTool(readBlock, steelSession);
                     const readText = readResult
                       .filter(b => b.type === 'text')
                       .map(b => (b as { type: 'text'; text: string }).text)
@@ -809,7 +1000,7 @@ try {
                       tool_use_id: block.id,
                       content: [{
                         type: 'text',
-                        text: `${firstText.text}\n\n[Auto read_page after element not found]\n${truncateText(readText)}`,
+                        text: `${firstText?.text ?? ''}\n\n[Auto read_page after element not found]\n${truncateText(readText)}`,
                       }],
                       is_error: true,
                     });
@@ -839,6 +1030,26 @@ try {
             updatedAt: Date.now(),
           })),
         }));
+
+        // T035/T036: journal write-after-every-round, so background.ts (which
+        // survives independently of this side panel) always has current state on
+        // disk. See tasks.md T035 for the scope note on why the loop itself still
+        // runs here rather than being fully relocated into the service worker.
+        {
+          const currentHistory = toAnthropicMessages(activeConversation(get)?.messages ?? []);
+          const journalSnapshot: ExecutionJournal = {
+            taskId,
+            roundCount: agentIteration,
+            conversationHistory: currentHistory,
+            activeTabId: null,
+            activeGroupId: null,
+            pendingAction: null,
+            status: 'in_progress',
+            createdAt: agentStartTime,
+            updatedAt: Date.now(),
+          };
+          chrome.runtime.sendMessage({ type: 'TASK_ROUND_COMPLETE', taskId, journal: journalSnapshot }).catch(() => {});
+        }
       }
     } catch (e) {
       const wasAbort = (e as Error).name === 'AbortError';
@@ -912,6 +1123,9 @@ try {
       if (settings.computerUseEnabled) {
         chrome.runtime.sendMessage({ type: 'AGENT_STOPPED' }).catch(() => {});
       }
+      // Task finished on its own (not via stopGeneration) — clear the id but leave the
+      // tab group itself alone (still 'done'-colored, tabs stay open for the user to review).
+      if (get().currentTaskId) set({ currentTaskId: null });
     }
   },
 }));

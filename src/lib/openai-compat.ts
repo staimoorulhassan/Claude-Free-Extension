@@ -3,7 +3,8 @@
  * Intercepts Anthropic /v1/messages calls and routes to any OpenAI-compatible provider.
  */
 
-import type { ProviderConfig } from './types';
+import type { ProviderConfig, AnthropicTool } from './types';
+import { buildTier2SystemPromptAddendum, parseTier2Response } from './toolCallPolyfill';
 
 // ─── Provider presets ──────────────────────────────────────────────────────────
 
@@ -13,7 +14,15 @@ interface ProviderPreset {
   supportsVision: boolean;
   supportsTools: boolean;
   modelMap: Record<string, string>;
+  /** T045: approximate published context window for the preset's defaultModel.
+   * Used by contextWindow-aware sliding-window pruning (store.ts compressForApi)
+   * when the user hasn't overridden it. Conservative estimates, not exact per
+   * research.md §9 — precision here matters far less than "not silently infinite". */
+  contextWindow: number;
 }
+
+/** T009 fallback for providers with no matching preset (custom/unknown baseURL). */
+export const DEFAULT_CONTEXT_WINDOW = 8192;
 
 export const PROVIDERS: Record<string, ProviderPreset> = {
   gemini: {
@@ -31,6 +40,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-3-5-haiku-20241022': 'gemini-2.0-flash-lite',
       'claude-3-opus-20240229': 'gemini-2.5-pro',
     },
+    contextWindow: 1_000_000,
   },
   deepseek: {
     baseURL: 'https://api.deepseek.com',
@@ -44,6 +54,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-sonnet-4-5': 'deepseek-chat',
       'claude-haiku-4-5': 'deepseek-chat',
     },
+    contextWindow: 64_000,
   },
   qwen: {
     baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
@@ -55,6 +66,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-sonnet-4-6': 'qwen-plus',
       'claude-haiku-4-5': 'qwen-turbo',
     },
+    contextWindow: 32_768,
   },
   minimax: {
     baseURL: 'https://api.minimax.chat/v1',
@@ -66,6 +78,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-sonnet-4-6': 'abab6.5s-chat',
       'claude-haiku-4-5': 'abab5.5s-chat',
     },
+    contextWindow: 245_760,
   },
   glm: {
     baseURL: 'https://open.bigmodel.cn/api/paas/v4',
@@ -77,6 +90,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-sonnet-4-6': 'glm-4',
       'claude-haiku-4-5': 'glm-4-flash',
     },
+    contextWindow: 128_000,
   },
   openai: {
     baseURL: 'https://api.openai.com/v1',
@@ -88,6 +102,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-sonnet-4-6': 'gpt-4o',
       'claude-haiku-4-5': 'gpt-4o-mini',
     },
+    contextWindow: 128_000,
   },
   groq: {
     baseURL: 'https://api.groq.com/openai/v1',
@@ -98,6 +113,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-opus-4-7': 'llama-3.3-70b-versatile',
       'claude-haiku-4-5': 'llama-3.1-8b-instant',
     },
+    contextWindow: 128_000,
   },
   mistral: {
     baseURL: 'https://api.mistral.ai/v1',
@@ -108,6 +124,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-opus-4-7': 'mistral-large-latest',
       'claude-haiku-4-5': 'mistral-small-latest',
     },
+    contextWindow: 128_000,
   },
   ollama: {
     baseURL: 'http://localhost:11434/v1',
@@ -115,6 +132,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     supportsVision: true,
     supportsTools: true,
     modelMap: {},
+    contextWindow: DEFAULT_CONTEXT_WINDOW, // model-dependent; local models vary widely, stay conservative
   },
   lmstudio: {
     baseURL: 'http://localhost:1234/v1',
@@ -122,6 +140,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     supportsVision: false,
     supportsTools: true,
     modelMap: {},
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
   },
   pollinations: {
     baseURL: 'https://gen.pollinations.ai/v1',
@@ -138,6 +157,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-3-5-haiku-20241022': 'openai-large',
       'claude-3-opus-20240229': 'openai-large',
     },
+    contextWindow: 32_768,
   },
   openrouter: {
     baseURL: 'https://openrouter.ai/api/v1',
@@ -154,6 +174,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-3-5-haiku-20241022': 'anthropic/claude-3.5-haiku',
       'claude-3-opus-20240229': 'anthropic/claude-3-opus',
     },
+    contextWindow: 128_000, // default model is gpt-4o-shaped; per-model override recommended for other picks
   },
   fireworks: {
     baseURL: 'https://api.fireworks.ai/inference/v1',
@@ -165,6 +186,7 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-sonnet-4-6': 'accounts/fireworks/models/llama-v3p3-70b-instruct',
       'claude-haiku-4-5': 'accounts/fireworks/models/llama-v3p1-8b-instruct',
     },
+    contextWindow: 128_000,
   },
 };
 
@@ -360,6 +382,83 @@ function buildAnthropicStream(openaiStream: ReadableStream<Uint8Array>, anthropi
   });
 }
 
+// ─── Tier-2 (XML tool-call polyfill) SSE translator ────────────────────────────
+// T044: unlike buildAnthropicStream (which re-emits native OpenAI tool_calls
+// deltas incrementally), a Tier-2 response's tool call is embedded in plain text
+// we can't safely tag-strip mid-stream — so this accumulates the full OpenAI
+// response first, parses it in one shot, then emits it as a single Anthropic
+// content block plus any tool_use blocks. This is non-streaming from the user's
+// perspective (a UX regression vs. native providers) but that's the honest
+// trade-off for a text-embedded tool-call protocol; see research.md §8.
+
+async function buildTier2AnthropicStream(openaiStream: ReadableStream<Uint8Array>, anthropicModel: string, msgId: string): Promise<ReadableStream<Uint8Array>> {
+  const dec = new TextDecoder();
+  const reader = openaiStream.getReader();
+  let buf = '', fullText = '', outTokens = 0, finishReason = 'stop';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop() ?? '';
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith('data:')) continue;
+      const raw = t.slice(5).trim();
+      if (raw === '[DONE]') continue;
+      let chunk: Record<string, unknown>;
+      try { chunk = JSON.parse(raw); } catch { continue; }
+      if (chunk['usage']) outTokens = (chunk['usage'] as Record<string, number>)['completion_tokens'] ?? outTokens;
+      const choice = (chunk['choices'] as Record<string, unknown>[])?.[0];
+      if (!choice) continue;
+      const delta = (choice['delta'] ?? {}) as Record<string, unknown>;
+      if (typeof delta['content'] === 'string') fullText += delta['content'];
+      if (choice['finish_reason']) finishReason = choice['finish_reason'] as string;
+    }
+  }
+
+  const { visibleText, toolCalls, parseErrors } = parseTier2Response(fullText);
+  const stopReason = toolCalls.length > 0 ? 'tool_use' : mapFinishReason(finishReason);
+
+  const enc = new TextEncoder();
+  function sse(event: string, data: unknown) {
+    return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  }
+
+  return new ReadableStream({
+    start(ctrl) {
+      const enq = (s: string) => ctrl.enqueue(enc.encode(s));
+      enq(sse('message_start', { type: 'message_start', message: { id: msgId, type: 'message', role: 'assistant', content: [], model: anthropicModel, stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } }));
+
+      let idx = 0;
+      const text = parseErrors.length
+        ? `${visibleText}\n\n[Tool-call parse error: ${parseErrors.join('; ')}]`
+        : visibleText;
+      if (text) {
+        enq(sse('content_block_start', { type: 'content_block_start', index: idx, content_block: { type: 'text', text: '' } }));
+        enq(sse('content_block_delta', { type: 'content_block_delta', index: idx, delta: { type: 'text_delta', text } }));
+        enq(sse('content_block_stop', { type: 'content_block_stop', index: idx }));
+        idx++;
+      }
+      for (const call of toolCalls) {
+        enq(sse('content_block_start', { type: 'content_block_start', index: idx, content_block: { type: 'tool_use', id: `toolu_${Date.now()}_${idx}`, name: call.name, input: {} } }));
+        enq(sse('content_block_delta', { type: 'content_block_delta', index: idx, delta: { type: 'input_json_delta', partial_json: JSON.stringify(call.arguments) } }));
+        enq(sse('content_block_stop', { type: 'content_block_stop', index: idx }));
+        idx++;
+      }
+      if (idx === 0) {
+        enq(sse('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }));
+        enq(sse('content_block_stop', { type: 'content_block_stop', index: 0 }));
+      }
+
+      enq(sse('message_delta', { type: 'message_delta', delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: outTokens } }));
+      enq(sse('message_stop', { type: 'message_stop' }));
+      ctrl.close();
+    },
+  });
+}
+
 // ─── Main factory ──────────────────────────────────────────────────────────────
 
 export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetch {
@@ -394,10 +493,19 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
     const resolvedModel = modelMap[anthropicModel] ?? defaultModel;
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+    // T043: providers that don't support native function calling get the Tier-2
+    // <thinking>/<tool_call> system-prompt protocol instead of the `tools` param.
+    const requestedTools = Array.isArray(ab['tools']) ? (ab['tools'] as unknown as AnthropicTool[]) : [];
+    const useTier2 = !supportsTools && requestedTools.length > 0;
+
     // Build OpenAI messages
     const oaiMessages: OAIMessage[] = [];
-    if (ab['system']) {
-      const sys = typeof ab['system'] === 'string' ? ab['system'] : (Array.isArray(ab['system']) ? (ab['system'] as Record<string, unknown>[]).filter(b => b.type === 'text').map(b => b.text as string).join('\n\n') : '');
+    {
+      let sys = typeof ab['system'] === 'string' ? (ab['system'] as string) : (Array.isArray(ab['system']) ? (ab['system'] as Record<string, unknown>[]).filter(b => b.type === 'text').map(b => b.text as string).join('\n\n') : '');
+      if (useTier2) {
+        const addendum = buildTier2SystemPromptAddendum(requestedTools);
+        sys = sys ? `${sys}\n\n${addendum}` : addendum;
+      }
       if (sys) oaiMessages.push({ role: 'system', content: sys });
     }
     for (const msg of (ab['messages'] as Record<string, unknown>[]) ?? []) {
@@ -413,7 +521,7 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
     if (ab['temperature'] != null) oaiBody['temperature'] = ab['temperature'];
     if (ab['top_p'] != null) oaiBody['top_p'] = ab['top_p'];
     if (Array.isArray(ab['stop_sequences']) && ab['stop_sequences'].length) oaiBody['stop'] = ab['stop_sequences'];
-    if (supportsTools && Array.isArray(ab['tools']) && ab['tools'].length) {
+    if (supportsTools && requestedTools.length > 0) {
       oaiBody['tools'] = (ab['tools'] as Record<string, unknown>[]).map(t => ({
         type: 'function',
         function: { name: t['name'], description: t['description'] ?? '', parameters: t['input_schema'] ?? { type: 'object', properties: {}, required: [] } },
@@ -421,6 +529,7 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
       const tc = ab['tool_choice'] as Record<string, unknown> | undefined;
       if (tc) oaiBody['tool_choice'] = tc['type'] === 'auto' ? 'auto' : tc['type'] === 'any' ? 'required' : tc['type'] === 'tool' ? { type: 'function', function: { name: tc['name'] } } : 'auto';
     }
+    // Tier-2 never sends a native `tools` param — the addendum above is the whole mechanism.
     if (streaming) oaiBody['stream_options'] = { include_usage: true };
 
     if (debug) console.log('[openai-compat] →', { provider: config.provider, model: resolvedModel });
@@ -439,7 +548,10 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
     }
 
     if (streaming) {
-      return new Response(buildAnthropicStream(resp.body!, anthropicModel, msgId), {
+      const anthropicStream = useTier2
+        ? await buildTier2AnthropicStream(resp.body!, anthropicModel, msgId)
+        : buildAnthropicStream(resp.body!, anthropicModel, msgId);
+      return new Response(anthropicStream, {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
       });
@@ -450,15 +562,37 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
     const msg = (choice['message'] ?? {}) as Record<string, unknown>;
     const usage = (json['usage'] ?? {}) as Record<string, number>;
     const content: unknown[] = [];
-    if (msg['content']) content.push({ type: 'text', text: msg['content'] });
-    if (Array.isArray(msg['tool_calls'])) {
-      for (const tc of msg['tool_calls'] as Record<string, unknown>[]) {
-        const fn = tc['function'] as Record<string, unknown>;
-        let inp: unknown;
-        try { inp = JSON.parse(fn['arguments'] as string || '{}'); } catch { inp = { _raw: fn['arguments'] }; }
-        content.push({ type: 'tool_use', id: tc['id'], name: fn['name'], input: inp });
+    let stopReason = mapFinishReason(choice['finish_reason'] as string);
+
+    if (useTier2) {
+      // T044 (non-streaming path): parse the same <tool_call> protocol out of the
+      // one-shot response text.
+      const { visibleText, toolCalls, parseErrors } = parseTier2Response((msg['content'] as string) ?? '');
+      const text = parseErrors.length ? `${visibleText}\n\n[Tool-call parse error: ${parseErrors.join('; ')}]` : visibleText;
+      if (text) content.push({ type: 'text', text });
+      for (const call of toolCalls) {
+        content.push({ type: 'tool_use', id: `toolu_${Date.now()}_${content.length}`, name: call.name, input: call.arguments });
+      }
+      if (toolCalls.length > 0) stopReason = 'tool_use';
+    } else {
+      if (msg['content']) content.push({ type: 'text', text: msg['content'] });
+      if (Array.isArray(msg['tool_calls'])) {
+        for (const tc of msg['tool_calls'] as Record<string, unknown>[]) {
+          const fn = tc['function'] as Record<string, unknown>;
+          let inp: unknown;
+          try { inp = JSON.parse(fn['arguments'] as string || '{}'); } catch { inp = { _raw: fn['arguments'] }; }
+          content.push({ type: 'tool_use', id: tc['id'], name: fn['name'], input: inp });
+        }
       }
     }
-    return new Response(JSON.stringify({ id: msgId, type: 'message', role: 'assistant', content, model: anthropicModel, stop_reason: mapFinishReason(choice['finish_reason'] as string), stop_sequence: null, usage: { input_tokens: usage['prompt_tokens'] ?? 0, output_tokens: usage['completion_tokens'] ?? 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ id: msgId, type: 'message', role: 'assistant', content, model: anthropicModel, stop_reason: stopReason, stop_sequence: null, usage: { input_tokens: usage['prompt_tokens'] ?? 0, output_tokens: usage['completion_tokens'] ?? 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
+}
+
+/** T045/T046: resolves the effective contextWindow for a provider config, falling
+ * back to the preset's value, then DEFAULT_CONTEXT_WINDOW for unknown/custom providers. */
+export function resolveContextWindow(config: ProviderConfig): number {
+  if (config.contextWindow) return config.contextWindow;
+  const preset = PROVIDERS[config.provider];
+  return preset?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
 }
