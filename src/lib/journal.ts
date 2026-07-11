@@ -76,11 +76,11 @@ export type ResumeVerifier = (journal: ExecutionJournal) => Promise<boolean>;
  * before resuming; mark orphaned (terminal) rather than silently resuming against
  * a tab that's gone, or silently dropping the task.
  *
- * Reconciles any pendingAction before returning: a restart mid-action means we can't
- * know whether the browser action completed or not. Safe strategy: clear it and let
- * the next LLM round re-perceive the actual page state rather than replay an action
- * that might have already happened (idempotent reconciliation — multiple restarts
- * won't duplicate or lose the action).
+ * Reconciles pendingAction: a browser action interrupted mid-execution cannot be
+ * reliably replayed (no idempotency guarantee — e.g. a click may have fired but the
+ * response wasn't journaled yet), so we clear it and let the LLM retry from the last
+ * completed round's conversation state if needed. This is idempotent: restarting again
+ * won't re-execute or lose the action, since it's already been settled to null.
  */
 export async function resolveJournalOnStartup(
   journal: ExecutionJournal,
@@ -96,16 +96,9 @@ export async function resolveJournalOnStartup(
     return { journal: orphaned, resumed: false };
   }
 
-  // Reconcile pendingAction: if it's non-null, the restart happened mid-action. We
-  // don't know if it completed or not, so clear it and let the next round's perception
-  // (read_page_state) tell the model what state the page is actually in. This prevents
-  // duplicate execution if the action did finish before the restart, and allows the
-  // model to retry if it didn't — idempotent across multiple restarts.
-  if (journal.pendingAction !== null) {
-    const reconciled: ExecutionJournal = { ...journal, pendingAction: null, updatedAt: Date.now() };
-    await writeJournal(reconciled, storage);
-    return { journal: reconciled, resumed: true };
-  }
-
-  return { journal, resumed: true };
+  // Reconcile pendingAction before resuming: clear it so a restart can't duplicate the
+  // interrupted browser action. The LLM will retry from the last completed round if needed.
+  const settled: ExecutionJournal = { ...journal, pendingAction: null, updatedAt: Date.now() };
+  await writeJournal(settled, storage);
+  return { journal: settled, resumed: true };
 }
