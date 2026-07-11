@@ -222,7 +222,8 @@ interface NetworkErrorEntry { url: string; status: number; method: string; times
 
 const consoleErrorsByTab = new Map<number, ConsoleErrorEntry[]>();
 const networkErrorsByTab = new Map<number, NetworkErrorEntry[]>();
-const inflightRequests = new Map<string, { url: string; method: string }>(); // "tabId:requestId" → info, per debugger event stream
+// Composite key (tabId:requestId) prevents collision across tabs and allows cleanup when a request terminates
+const inflightRequests = new Map<string, { url: string; method: string }>();
 
 async function enableLogNetworkDomains(tabId: number): Promise<void> {
   const session = debuggerSessions.get(tabId);
@@ -258,9 +259,9 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   if (method === 'Network.responseReceived') {
     const p = params as { requestId?: string; response?: { url?: string; status?: number } };
     const key = p.requestId ? `${tabId}:${p.requestId}` : undefined;
+    const info = key ? inflightRequests.get(key) : undefined;
     const status = p.response?.status ?? 0;
     if (status >= 400) {
-      const info = key ? inflightRequests.get(key) : undefined;
       const list = networkErrorsByTab.get(tabId) ?? [];
       list.push({
         url: p.response?.url ?? info?.url ?? '',
@@ -270,7 +271,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       });
       networkErrorsByTab.set(tabId, list.slice(-50));
     }
-    // Remove from inflight map after handling terminal event (prevent memory leak)
+    // Clean up the inflight entry now that the request has terminated
     if (key) inflightRequests.delete(key);
     return;
   }
@@ -284,42 +285,29 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       list.push({ url: info.url, status: 0, method: info.method, timestamp: Date.now() });
       networkErrorsByTab.set(tabId, list.slice(-50));
     }
-    // Remove from inflight map after handling terminal event (prevent memory leak)
+    // Clean up the inflight entry now that the request has terminated
     if (key) inflightRequests.delete(key);
   }
 });
 
-/**
- * Sanitize console error text before sending to AI provider: redact potential secrets
- * (API keys, tokens, long hex/base64-like strings that could be auth credentials).
- */
+// Redact potential secrets from console error text before sending to LLM provider
 function sanitizeConsoleError(text: string): string {
   return text
-    // Redact things that look like API keys or tokens (common patterns)
-    .replace(/\b(api[_-]?key|token|auth|bearer|secret)[=:\s]+[\w\-._~+/=]{16,}/gi, '$1=<redacted>')
-    // Redact long hex strings (32+ chars, typical for keys/session IDs)
-    .replace(/\b[0-9a-f]{32,}\b/gi, '<redacted-hex>')
-    // Redact long base64-like strings (24+ chars)
-    .replace(/\b[A-Za-z0-9+/=]{24,}\b/g, (match) => {
-      // Only redact if it looks base64-ish (ends with = or is a multiple of 4)
-      if (match.endsWith('=') || match.length % 4 === 0) return '<redacted-base64>';
-      return match;
-    });
+    // Redact common secret patterns: API keys, tokens, bearer tokens
+    .replace(/\b[A-Za-z0-9_-]{20,}\b/g, '[REDACTED]')
+    .replace(/(?:api[_-]?key|token|secret|password|auth)[\s:=]+[^\s&<>"']+/gi, '$&[REDACTED]')
+    .replace(/bearer\s+[^\s&<>"']+/gi, 'bearer [REDACTED]')
+    .replace(/authorization:\s*[^\s&<>"']+/gi, 'authorization: [REDACTED]');
 }
 
-/**
- * Normalize network error URLs: strip query parameters and fragments while preserving
- * method and status, so the provider doesn't receive unsanitized URLs that may contain
- * session tokens or other secrets in query strings.
- */
-function sanitizeNetworkURL(url: string): string {
+// Normalize network error URL by stripping query params and fragments while preserving method/status
+function sanitizeNetworkErrorUrl(url: string): string {
   try {
     const parsed = new URL(url);
-    // Keep only origin + pathname, drop query and fragment
     return `${parsed.origin}${parsed.pathname}`;
   } catch {
-    // If URL parsing fails (relative URL, etc.), just return the original
-    return url;
+    // Not a valid URL, strip query/fragment manually
+    return url.split('?')[0].split('#')[0];
   }
 }
 
@@ -461,7 +449,7 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
   switch (action.action) {
 
     case 'screenshot': {
-      await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' });
+      await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' }).catch(() => {});
       await new Promise(r => setTimeout(r, 150));
 
       let base64: string;
@@ -496,8 +484,8 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
           base64 = dataUrl.split(',')[1] ?? '';
         }
       } finally {
-        // Always restore the automation indicator, even if screenshot fails
-        await broadcastToWebTabs({ type: 'SHOW_AFTER_TOOL_USE' });
+        // Always restore the automation indicator, even if screenshot capture failed
+        await broadcastToWebTabs({ type: 'SHOW_AFTER_TOOL_USE' }).catch(() => {});
       }
 
       return [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } }];
@@ -705,7 +693,7 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
           parts.push(`Console errors (${consoleErrors.length}): ` + consoleErrors.map(e => `[${e.level}] ${sanitizeConsoleError(e.text)}`).join(' | '));
         }
         if (networkErrors.length) {
-          parts.push(`Network errors (${networkErrors.length}): ` + networkErrors.map(e => `${e.method} ${sanitizeNetworkURL(e.url)} → ${e.status || 'failed'}`).join(' | '));
+          parts.push(`Network errors (${networkErrors.length}): ` + networkErrors.map(e => `${e.method} ${sanitizeNetworkErrorUrl(e.url)} → ${e.status || 'failed'}`).join(' | '));
         }
         parts.push(result?.pageContent ?? '');
       }
@@ -714,7 +702,7 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
 
       if (action.include_vision) {
         try {
-          await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' });
+          await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' }).catch(() => {});
           await new Promise(r => setTimeout(r, 150));
           try {
             const metrics = await chrome.scripting.executeScript({
@@ -732,8 +720,8 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
             }) as { data: string };
             blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: shot.data } });
           } finally {
-            // Always restore the automation indicator, even if screenshot fails
-            await broadcastToWebTabs({ type: 'SHOW_AFTER_TOOL_USE' });
+            // Always restore the automation indicator, even if screenshot capture failed
+            await broadcastToWebTabs({ type: 'SHOW_AFTER_TOOL_USE' }).catch(() => {});
           }
         } catch { /* vision is best-effort; text state above is still returned */ }
       }
