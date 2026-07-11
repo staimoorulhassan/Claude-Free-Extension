@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getSettings, saveSettings } from '@/lib/storage';
-import { PROVIDERS } from '@/lib/openai-compat';
+import { PROVIDERS, resolveContextWindow } from '@/lib/openai-compat';
 import type { AppSettings } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
 
@@ -45,6 +45,16 @@ export function App() {
           </Field>
           <Field label="Default model">
             <input type="text" value={settings.provider.defaultModel ?? ''} onChange={e => update({ provider: { ...settings.provider, defaultModel: e.target.value || undefined } })} placeholder={PROVIDERS[settings.provider.provider]?.defaultModel ?? 'model name'} />
+          </Field>
+          <Field label={`Context window (tokens) — used for chat compression, currently: ${resolveContextWindow(settings.provider).toLocaleString()}`}>
+            <input
+              type="number"
+              min={1024}
+              step={1024}
+              value={settings.provider.contextWindow ?? ''}
+              onChange={e => update({ provider: { ...settings.provider, contextWindow: e.target.value ? Number(e.target.value) : undefined } })}
+              placeholder={String(PROVIDERS[settings.provider.provider]?.contextWindow ?? 8192)}
+            />
           </Field>
         </div>
       </section>

@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
@@ -20,13 +22,15 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.47.0",
     "@types/chrome": "^0.0.268",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.5.4",
-    "vite": "5.4.21"
+    "vite": "5.4.21",
+    "vitest": "^2.1.9"
   },
   "overrides": {
     "vite": "5.4.21"

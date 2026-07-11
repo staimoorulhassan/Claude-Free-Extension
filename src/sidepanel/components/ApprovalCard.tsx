@@ -10,15 +10,19 @@ function describeBlock(block: ToolUseBlock): string {
     case 'navigate':    return `Navigate to ${inp.url}`;
     case 'screenshot':  return 'Take a screenshot';
     case 'read_page':   return `Read page (${inp.filter ?? 'interactive'})`;
+    case 'read_page_state': return `Read page state (${inp.filter ?? 'interactive'}${inp.include_vision ? ', with screenshot' : ''})`;
     case 'left_click':  return `Click at (${(inp.coordinate as number[])?.join(', ')})`;
     case 'right_click': return `Right-click at (${(inp.coordinate as number[])?.join(', ')})`;
     case 'double_click':return `Double-click at (${(inp.coordinate as number[])?.join(', ')})`;
     case 'click_element': return `Click element ${inp.ref_id}`;
     case 'type':        return `Type: "${String(inp.text ?? '').slice(0, 60)}${String(inp.text ?? '').length > 60 ? '…' : ''}"`;
+    case 'type_text':   return `Type into ${inp.selector}: "${String(inp.text ?? '').slice(0, 60)}"${inp.submit ? ' + Enter' : ''}`;
     case 'key':         return `Press key: ${inp.text}`;
     case 'scroll':      return `Scroll ${inp.direction} (${inp.num_clicks ?? 3} steps)`;
     case 'left_click_drag': return `Drag from (${(inp.start_coordinate as number[])?.join(',')}) to (${(inp.coordinate as number[])?.join(',')})`;
     case 'wait':        return `Wait ${inp.duration ?? 1}s`;
+    case 'execute_js':  return `Run JavaScript: ${String(inp.script ?? '').slice(0, 80)}${String(inp.script ?? '').length > 80 ? '…' : ''}`;
+    case 'manage_tabs': return `Tabs: ${inp.op}${inp.url ? ` ${inp.url}` : ''}${inp.tab_id !== undefined ? ` (tab ${inp.tab_id})` : ''}`;
     default:            return action;
   }
 }
@@ -26,9 +30,10 @@ function describeBlock(block: ToolUseBlock): string {
 function actionIcon(block: ToolUseBlock): string {
   const action = (block.input as Record<string, unknown>).action as string;
   const icons: Record<string, string> = {
-    navigate: '🌐', screenshot: '📸', read_page: '📄',
+    navigate: '🌐', screenshot: '📸', read_page: '📄', read_page_state: '📄',
     left_click: '👆', right_click: '👆', double_click: '👆', click_element: '👆',
-    type: '⌨️', key: '⌨️', scroll: '↕️', left_click_drag: '↔️', wait: '⏳',
+    type: '⌨️', type_text: '⌨️', key: '⌨️', scroll: '↕️', left_click_drag: '↔️', wait: '⏳',
+    execute_js: '⚡', manage_tabs: '🗂️',
   };
   return icons[action] ?? '🔧';
 }

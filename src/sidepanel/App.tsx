@@ -6,6 +6,7 @@ import { MessageInput } from './components/MessageInput';
 import { SettingsPanel } from './components/SettingsPanel';
 import { HistoryPanel } from './components/HistoryPanel';
 import { ApprovalCard } from './components/ApprovalCard';
+import { AskUserCard } from './components/AskUserCard';
 import { RecordingsPanel } from './components/RecordingsPanel';
 
 function applyTheme(theme: 'auto' | 'light' | 'dark') {
@@ -54,6 +55,7 @@ export function App() {
             </div>
           )}
           <ApprovalCard />
+          <AskUserCard />
           <MessageInput />
         </>
       )}

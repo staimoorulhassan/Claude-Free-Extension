@@ -93,6 +93,68 @@ export interface ProviderConfig {
   supportsVision?: boolean;
   supportsTools?: boolean;
   debug?: boolean;
+  /** Token context window for this provider/model. Drives contextWindow-aware sliding-window
+   * pruning in compressForApi (see spec 001-claude-free-extension FR-015). Falls back to the
+   * existing message-count heuristic when absent. */
+  contextWindow?: number;
+}
+
+// ─── Agent engine types (spec 001-claude-free-extension) ──────────────────────
+
+/**
+ * Persisted to chrome.storage.local under key `journal:<taskId>` after every completed
+ * tool round, so a task survives MV3 service-worker termination/restart.
+ * See specs/001-claude-free-extension/data-model.md.
+ */
+export interface ExecutionJournal {
+  taskId: string;
+  roundCount: number;
+  conversationHistory: AnthropicMessage[];
+  activeTabId: number | null;
+  activeGroupId: number | null;
+  pendingAction: ToolCallEnvelope | null;
+  status: 'in_progress' | 'orphaned' | 'completed' | 'aborted';
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A chrome.tabGroups group created for a task that opens/drives more than one tab.
+ * Only memberTabIds/taskId are persisted (via ExecutionJournal.activeGroupId); title/color
+ * are re-derived from chrome.tabGroups on resume rather than duplicated, so they can't drift
+ * from actual browser state.
+ */
+export interface AgentTabGroup {
+  groupId: number;
+  taskId: string;
+  title: string;
+  color: chrome.tabGroups.ColorEnum;
+  memberTabIds: number[];
+}
+
+/**
+ * The common shape both the native tool_use path and the Tier-2 <tool_call> XML-polyfill
+ * parser produce, so executeTool() never needs to know which path produced a given call.
+ */
+export interface ToolCallEnvelope {
+  name: string;
+  arguments: Record<string, unknown>;
+  source: 'native' | 'tier2-xml';
+}
+
+/** Runtime guard used by both the native tool_use path and toolCallPolyfill.ts (T042) to
+ * confirm a candidate object is a well-formed ToolCallEnvelope before it reaches executeTool(). */
+export function isValidToolCallEnvelope(value: unknown): value is ToolCallEnvelope {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.name === 'string' &&
+    v.name.length > 0 &&
+    typeof v.arguments === 'object' &&
+    v.arguments !== null &&
+    !Array.isArray(v.arguments) &&
+    (v.source === 'native' || v.source === 'tier2-xml')
+  );
 }
 
 export interface SteelConfig {

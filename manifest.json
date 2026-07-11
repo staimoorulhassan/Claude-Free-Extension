@@ -26,7 +26,9 @@
     "scripting",
     "debugger",
     "tabs",
-    "downloads"
+    "tabGroups",
+    "downloads",
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -56,6 +58,6 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.anthropic.com https://gen.pollinations.ai https://generativelanguage.googleapis.com https://api.deepseek.com https://dashscope-intl.aliyuncs.com https://api.minimax.chat https://open.bigmodel.cn https://api.openai.com https://api.groq.com https://api.mistral.ai https://api.moonshot.cn https://openrouter.ai https://api.fireworks.ai http://localhost:11434 http://localhost:1234; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.anthropic.com https://gen.pollinations.ai https://generativelanguage.googleapis.com https://api.deepseek.com https://dashscope-intl.aliyuncs.com https://api.minimax.chat https://open.bigmodel.cn https://api.openai.com https://api.groq.com https://api.mistral.ai https://openrouter.ai https://api.fireworks.ai http://localhost:11434 http://localhost:1234; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
   }
 }
