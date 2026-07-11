@@ -5,7 +5,7 @@ import { getSettings, saveSettings, getConversations, saveConversations, generat
 import type { ProviderVault } from '@/lib/storage';
 import { getRecordings, saveRecordings, recordingToText } from '@/lib/recordings';
 import type { Recording } from '@/lib/recordings';
-import { createOpenAICompatibleFetch, resolveContextWindow } from '@/lib/openai-compat';
+import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
 import { getEnabledTools, executeTool } from '@/lib/tools';
 import { detectPattern, selectStrategy } from '@/lib/tokenOptimizer';
 import { createSteelManager } from '@/lib/steel-session';
@@ -86,6 +86,31 @@ function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
   return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
+// ── Self-healing helpers (T020) ─────────────────────────────────────────────────
+// Heuristic dismiss-button finder over the accessibility-tree text produced by
+// read_page_state/read_page (format: `role "accessible-name" [ref_id] ...` per line).
+// Used to auto-dismiss cookie banners/modals blocking a click_element target without
+// a full extra model round-trip.
+//
+// IMPORTANT: only neutral close/decline patterns are auto-clicked. Consent-granting
+// actions ("Accept all", "I agree", "Got it" — commonly a cookie-banner CTA — and any
+// other affirmative acceptance) are deliberately excluded: autonomously granting
+// cookie/terms consent on the user's behalf is a real privacy/consent action, not a
+// harmless UI dismissal, and must go through the normal ask_user/approval path
+// instead. "no thanks" is safe to auto-click — it *declines* consent.
+const DISMISS_PATTERNS = /no thanks|dismiss|^close$|^ok$|×/i;
+
+function findDismissRefId(pageContent: string): string | null {
+  for (const line of pageContent.split('\n')) {
+    const nameMatch = line.match(/"([^"]*)"/);
+    const refMatch = line.match(/\[(ref_[^\]]+)\]/);
+    if (nameMatch && refMatch && DISMISS_PATTERNS.test(nameMatch[1].trim())) {
+      return refMatch[1];
+    }
+  }
+  return null;
+}
+
 // ── Context compression ───────────────────────────────────────────────────────
 // Issue 11: balanced limits — enough context for complex tasks, not so much
 // it blows provider token limits.  Runs before every API call; never mutates
@@ -148,10 +173,7 @@ export function compressForApi(messages: AnthropicMessage[], debugMode: boolean 
     !(msg.role === 'assistant' && Array.isArray(msg.content) && msg.content.length === 0)
   );
 
-  const { maxMessages, maxTextChars } = computeEffectiveLimits(contextWindow);
-  if (debugMode && contextWindow) {
-    console.log(`[Context Compression] contextWindow=${contextWindow} → maxMessages=${maxMessages}, maxTextChars=${maxTextChars}`);
-  }
+  const { maxMessages, maxTextChars } = computeEffectiveLimits();
 
   // Sliding window
   const windowed = noEmpty.length > maxMessages
@@ -183,12 +205,6 @@ export function compressForApi(messages: AnthropicMessage[], debugMode: boolean 
     });
     return { ...msg, content: newContent };
   }).reverse();
-
-  // If conversation is VERY long (50+ messages), be more aggressive with compression
-  const isVeryLong = noEmpty.length > 50;
-  if (isVeryLong && debugMode) {
-    console.log(`[Context Compression] Very long conversation (${noEmpty.length} msgs), dropping older screenshots more aggressively`);
-  }
 
   return [...compressedHead, ...tail];
 }
@@ -314,14 +330,26 @@ export async function* streamWithRetry(
       await new Promise(r => setTimeout(r, delayMs));
     }
     
+    let yieldedThisAttempt = false;
     try {
-      for await (const ev of streamMessages(body, customFetch, signal, debugMode)) yield ev;
+      for await (const ev of streamMessages(body, customFetch, signal, debugMode)) {
+        yieldedThisAttempt = true;
+        yield ev;
+      }
       if (debugMode && attempt > 0) console.log(`[Retry] Success on attempt ${attempt + 1}`);
       return; // Success
     } catch (e) {
       lastError = e as Error;
       const msg = lastError.message ?? '';
-      
+
+      // Once events have been yielded, a retry would replay them into the same
+      // assistant turn (duplicated text / tool_use blocks, double tool execution).
+      // Never retry after partial delivery.
+      if (yieldedThisAttempt) {
+        if (debugMode) console.warn(`[Retry] Cannot retry after yielding events`);
+        throw e;
+      }
+
       // Determine if retryable
       const isAbort = lastError.name === 'AbortError';
       const isTimeout = msg.includes('timeout') || msg.includes('timed out');
@@ -574,6 +602,10 @@ export const useStore = create<Store>((set, get) => ({
     const tools = getEnabledTools(settings.computerUseEnabled);
     const debugMode = (settings as any).debugMode ?? false;
 
+    // T024-T029: task id + name for tab-group scoping (background.ts createOrJoinGroup).
+    const taskId = generateId();
+    const taskName = (firstText || 'New task').slice(0, 60);
+
     set({ currentTaskId: taskId });
     if (settings.computerUseEnabled) {
       chrome.runtime.sendMessage({ type: 'AGENT_STARTED', taskId, taskName }).catch(() => {});
@@ -587,6 +619,10 @@ export const useStore = create<Store>((set, get) => ({
       const AGENT_TIMEOUT = 10 * 60 * 1000; // 10 minutes
       const agentStartTime = Date.now();
       let agentIteration = 0;
+
+      // T021: consecutive click_element failures per ref_id, scoped to this run —
+      // second failure on the same ref_id escalates to ask_user instead of retrying again.
+      const staleRetryCounts = new Map<string, number>();
       
       while (true) {
         // Check timeout
