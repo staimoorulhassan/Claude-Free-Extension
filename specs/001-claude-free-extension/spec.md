@@ -108,7 +108,7 @@ A user configures a free or local model that doesn't support native function cal
 - **FR-009**: System MUST persist an execution journal (task id, round count, conversation history, active tab/group id, pending action) to `chrome.storage.local` after every completed tool round.
 - **FR-010**: System MUST detect a pending journal entry on service-worker startup and resume the task from the last completed round instead of restarting it.
 - **FR-011**: System MUST run an offscreen-document heartbeat to prevent MV3 idle-termination of the service worker during an active task.
-- **FR-012**: The agent loop MUST be driven from a context that outlives the side panel (i.e., relocated into or coordinated through the service worker), since the side panel closing today already destroys all in-flight state.
+- **FR-012**: The execution journal (FR-009) MUST be durable across service-worker restarts. (Note: The agent loop itself remains in store.ts for this pass; relocation to a longer-lived context is deferred as follow-up work. Only the journal is made durable in this iteration.)
 
 **Multi-provider router (P4)**
 - **FR-013**: System MUST fall back to a system-prompt-injected `<thinking>`/`<tool_call>` XML protocol when a provider's `supportsTools` is `false`, instead of silently sending the request without tools (current behavior in `openai-compat.ts`).
