@@ -6,7 +6,7 @@
     "dev": "vite build --watch --mode development",
     "build": "vite build",
     "type-check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run && node --test tests/specs.test.mjs"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
