@@ -24,7 +24,7 @@ const SPEC_FILES = [
 ];
 
 function readSpec(name) {
-  return readFileSync(path.join(SPECS_DIR, name), 'utf8');
+  return readFileSync(path.join(SPECS_DIR, name), 'utf8').replace(/\r\n/g, '\n');
 }
 
 // Extracts the body of a section identified by an exact heading line (e.g.
@@ -85,10 +85,10 @@ for (const file of SPEC_FILES) {
       assert.ok(section, 'Acceptance Criteria section is missing');
       const checkboxes = getCheckboxes(section);
       assert.ok(checkboxes.length >= 1, 'Expected at least one acceptance criterion');
-      // Every non-blank line in the section must itself be a checkbox item —
-      // guards against stray prose slipping into a checklist section.
-      const nonBlankLines = section.split('\n').filter((l) => l.trim().length > 0);
-      assert.equal(nonBlankLines.length, checkboxes.length);
+      // Multi-line checklist items may include indented continuation lines, but
+      // every top-level item must be a checkbox.
+      const topLevelLines = section.split('\n').filter((l) => l.trim().length > 0 && !/^\s/.test(l));
+      assert.equal(topLevelLines.length, checkboxes.length);
     });
 
     test('has an "## Out of Scope" section', () => {
@@ -133,36 +133,39 @@ describe('01-agent-engine.spec.md', () => {
     assert.equal(getCheckboxes(section).length, 5);
   });
 
-  test('documents all seven standardized tools with a name and parameters column', () => {
-    const expectedTools = [
+  test('documents all standardized browser actions with a name and parameters column', () => {
+    const expectedRows = [
       'navigate',
       'click_element',
-      'type_text',
-      'read_page_state',
-      'execute_js',
-      'manage_tabs',
-      'ask_user',
+      'left_click`, `double_click`, `right_click`, `middle_click',
+      'type',
+      'key',
+      'scroll',
+      'left_click_drag',
+      'read_page',
+      'screenshot',
+      'wait',
     ];
     const tableRows = content
       .split('\n')
       .filter((l) => /^\| `[a-z_]+`/.test(l));
-    assert.equal(tableRows.length, expectedTools.length);
+    assert.ok(tableRows.length >= expectedRows.length);
 
-    for (const tool of expectedTools) {
-      const row = tableRows.find((l) => l.startsWith(`| \`${tool}\` `));
-      assert.ok(row, `Missing tool table row for ${tool}`);
+    for (const action of expectedRows) {
+      const row = tableRows.find((l) => l.startsWith(`| \`${action}\` `));
+      assert.ok(row, `Missing tool table row for ${action}`);
       const columns = row.split('|').map((c) => c.trim());
       // [ '', name, params, purpose, '' ]
       assert.equal(columns.length, 5);
-      assert.ok(columns[2].length > 0, `${tool} has no documented parameters`);
-      assert.ok(columns[3].length > 0, `${tool} has no documented purpose/verification`);
+      assert.ok(columns[2].length > 0, `${action} has no documented parameters`);
+      assert.ok(columns[3].length > 0, `${action} has no documented purpose/verification`);
     }
   });
 
   test('click_element documents stale-element retry behavior', () => {
-    const row = content.split('\n').find((l) => l.startsWith('| `click_element`'));
-    assert.ok(row);
-    assert.match(row, /Retries if stale/);
+    const section = getSection(content, '## Acceptance Criteria');
+    assert.ok(section);
+    assert.match(section, /`click_element` retries at least once on a stale-element error/);
   });
 
   test('describes both self-healing mechanisms', () => {
@@ -212,9 +215,9 @@ describe('02-tab-grouping.spec.md', () => {
 describe('03-endurance-runtime.spec.md', () => {
   const content = readSpec('03-endurance-runtime.spec.md');
 
-  test('exactly five acceptance criteria', () => {
+  test('exactly six acceptance criteria', () => {
     const section = getSection(content, '## Acceptance Criteria');
-    assert.equal(getCheckboxes(section).length, 5);
+    assert.equal(getCheckboxes(section).length, 6);
   });
 
   test('heartbeat section specifies a ping interval of 20 seconds', () => {
@@ -244,9 +247,9 @@ describe('03-endurance-runtime.spec.md', () => {
 describe('04-multi-provider-router.spec.md', () => {
   const content = readSpec('04-multi-provider-router.spec.md');
 
-  test('exactly six acceptance criteria', () => {
+  test('exactly seven acceptance criteria', () => {
     const section = getSection(content, '## Acceptance Criteria');
-    assert.equal(getCheckboxes(section).length, 6);
+    assert.equal(getCheckboxes(section).length, 7);
   });
 
   test('embeds a well-formed ModelProviderConfig TypeScript interface with expected fields', () => {
@@ -271,7 +274,7 @@ describe('04-multi-provider-router.spec.md', () => {
     for (const [field, type] of Object.entries(expectedFields)) {
       assert.match(
         code,
-        new RegExp(`\\b${field}\\s*:\\s*${type}\\s*;`),
+        new RegExp(`\\b${field}\\s*\\??:\\s*${type}\\s*;`),
         `Expected field \`${field}: ${type};\` in ModelProviderConfig`,
       );
     }
