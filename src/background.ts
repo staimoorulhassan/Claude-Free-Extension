@@ -104,11 +104,47 @@ interface RecordedStep {
 let recordingActive = false;
 let recordingTabId: number | null = null;
 let recordingSteps: RecordedStep[] = [];
+const RECORDING_SESSION_KEY = 'recordingSession';
+
+interface RecordingSession {
+  active: boolean;
+  tabId: number | null;
+  steps: RecordedStep[];
+}
+
+async function readRecordingSession(): Promise<RecordingSession> {
+  const { [RECORDING_SESSION_KEY]: session } = await chrome.storage.local.get(RECORDING_SESSION_KEY);
+  const saved = session as Partial<RecordingSession> | undefined;
+  return {
+    active: saved?.active === true,
+    tabId: typeof saved?.tabId === 'number' ? saved.tabId : null,
+    steps: Array.isArray(saved?.steps) ? saved.steps : [],
+  };
+}
+
+async function saveRecordingSession(): Promise<void> {
+  await chrome.storage.local.set({
+    [RECORDING_SESSION_KEY]: {
+      active: recordingActive,
+      tabId: recordingTabId,
+      steps: recordingSteps,
+    } satisfies RecordingSession,
+  });
+}
+
+async function restoreRecordingSession(): Promise<void> {
+  if (recordingActive) return;
+  const session = await readRecordingSession();
+  recordingActive = session.active;
+  recordingTabId = session.tabId;
+  recordingSteps = session.steps;
+}
 
 // Track navigations that happen while recording
 function maybeRecordNavigation(tabId: number, url: string) {
   if (recordingActive && recordingTabId === tabId && url) {
     recordingSteps.push({ action: 'navigate', url });
+    saveRecordingSession().catch(() => {});
   }
 }
 
@@ -817,10 +853,16 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
 
 // ── Message router ────────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'PING') {
-    sendResponse({ type: 'PONG' });
-    return false;
+    (async () => {
+      await restoreRecordingSession();
+      if (recordingActive && recordingTabId === sender.tab?.id) {
+        chrome.tabs.sendMessage(recordingTabId, { type: 'ENABLE_RECORDING' }).catch(() => {});
+      }
+      sendResponse({ type: 'PONG' });
+    })().catch(() => sendResponse({ type: 'PONG' }));
+    return true;
   }
 
   if (msg.type === 'computer_use') {
@@ -834,6 +876,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       recordingSteps = [];
       recordingActive = true;
+      recordingTabId = null;
       const windowId = msg.windowId as number | undefined;
       const query = windowId ? { active: true, windowId } : { active: true, lastFocusedWindow: true };
       const tabs = await chrome.tabs.query(query);
@@ -843,26 +886,37 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (tab.url) recordingSteps.push({ action: 'navigate', url: tab.url });
         chrome.tabs.sendMessage(tab.id, { type: 'ENABLE_RECORDING' }).catch(() => {});
       }
+      await saveRecordingSession();
       sendResponse({ ok: true });
-    })();
+    })().catch((error) => sendResponse({ ok: false, error: (error as Error).message }));
     return true;
   }
 
   if (msg.type === 'STOP_RECORDING') {
-    recordingActive = false;
-    if (recordingTabId !== null) {
-      chrome.tabs.sendMessage(recordingTabId, { type: 'DISABLE_RECORDING' }).catch(() => {});
-      recordingTabId = null;
-    }
-    const steps = [...recordingSteps];
-    recordingSteps = [];
-    sendResponse({ steps });
+    (async () => {
+      await restoreRecordingSession();
+      recordingActive = false;
+      if (recordingTabId !== null) {
+        chrome.tabs.sendMessage(recordingTabId, { type: 'DISABLE_RECORDING' }).catch(() => {});
+        recordingTabId = null;
+      }
+      const steps = [...recordingSteps];
+      recordingSteps = [];
+      await chrome.storage.local.remove(RECORDING_SESSION_KEY);
+      sendResponse({ steps });
+    })().catch((error) => sendResponse({ steps: [], error: (error as Error).message }));
     return true;
   }
 
   if (msg.type === 'RECORD_STEP') {
-    if (recordingActive) recordingSteps.push(msg.step as RecordedStep);
-    sendResponse({ ok: true });
+    (async () => {
+      await restoreRecordingSession();
+      if (recordingActive) {
+        recordingSteps.push(msg.step as RecordedStep);
+        await saveRecordingSession();
+      }
+      sendResponse({ ok: true });
+    })().catch((error) => sendResponse({ ok: false, error: (error as Error).message }));
     return true;
   }
 
