@@ -550,11 +550,11 @@ export const useStore = create<Store>((set, get) => ({
     await saveRecordings(recordings);
   },
 
-  deleteRecording: (id: string) => {
+  deleteRecording: async (id: string) => {
     const recordings = get().recordings.filter(r => r.id !== id);
     set({ recordings });
     if (get().attachedRecordingId === id) set({ attachedRecordingId: null });
-    saveRecordings(recordings);
+    await saveRecordings(recordings);
   },
 
   setAttachedRecording: (id) => set({ attachedRecordingId: id }),
