@@ -511,12 +511,20 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
   }
 
   beforeEach(() => {
+    Object.assign(globalThis, {
+      chrome: {
+        runtime: {
+          sendMessage: vi.fn(() => Promise.resolve()),
+        },
+      },
+    });
     customFetchMock.mockReset();
     executeToolMock.mockReset();
     getEnabledToolsMock.mockReset().mockReturnValue([]);
   });
 
   afterEach(() => {
+    delete (globalThis as { chrome?: unknown }).chrome;
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -541,7 +549,7 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
       'Agent session timed out after 10 minutes. Long tasks may need to be split.',
     );
     expect(useStore.getState().isStreaming).toBe(false);
-    expect(customFetchMock).toHaveBeenCalledTimes(1);
+    expect(customFetchMock).toHaveBeenCalledTimes(2);
     expect(executeToolMock).toHaveBeenCalledTimes(1);
     expect(
       logSpy.mock.calls.some(c => String(c[0]).includes('[Agent Loop] Timeout: session exceeded 10 minutes')),
@@ -579,7 +587,7 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
 
     expect(useStore.getState().error).toBeNull();
     expect(useStore.getState().isStreaming).toBe(false);
-    expect(customFetchMock).toHaveBeenCalledTimes(1);
+    expect(customFetchMock).toHaveBeenCalledTimes(2);
     expect(executeToolMock).not.toHaveBeenCalled();
 
     const conv = useStore.getState().conversations[0];
@@ -603,7 +611,7 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
     expect(useStore.getState().error).toBe(
       'Agent stopped after 25 tool rounds. Try breaking the task into smaller steps.',
     );
-    expect(customFetchMock).toHaveBeenCalledTimes(25);
+    expect(customFetchMock).toHaveBeenCalledTimes(26);
     expect(executeToolMock).toHaveBeenCalledTimes(25);
     expect(
       logSpy.mock.calls.some(c => String(c[0]).includes('[Agent Loop] Max iterations reached')),
