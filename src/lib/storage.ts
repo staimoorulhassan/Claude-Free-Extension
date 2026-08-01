@@ -24,9 +24,23 @@ export async function saveProviderVault(vault: ProviderVault): Promise<void> {
 const STALE_POLLINATIONS_MODELS = new Set(['openai', 'gemini-fast', 'mistral', 'gemini']);
 
 export async function getSettings(): Promise<AppSettings> {
-  const result = await chrome.storage.sync.get(['settings', 'migrations']);
-  const saved = result['settings'] as Partial<AppSettings> | undefined;
-  const migrations = (result['migrations'] ?? {}) as Record<string, boolean>;
+  // Settings live in chrome.storage.local: sync caps each item at 8 KB
+  // (QUOTA_BYTES_PER_ITEM), which a long custom systemPrompt blows past and
+  // triggers "kQuotaBytesPerItem quota exceeded". local has no per-item cap and
+  // we already request unlimitedStorage. Migrate any legacy sync copy once.
+  const local = await chrome.storage.local.get(['settings', 'migrations']);
+  let saved = local['settings'] as Partial<AppSettings> | undefined;
+  let migrations = (local['migrations'] ?? {}) as Record<string, boolean>;
+
+  if (!saved) {
+    const legacy = await chrome.storage.sync.get(['settings', 'migrations']);
+    if (legacy['settings']) {
+      saved = legacy['settings'] as Partial<AppSettings>;
+      migrations = (legacy['migrations'] ?? migrations) as Record<string, boolean>;
+      // Clear the oversized sync copy so it stops throwing on write.
+      chrome.storage.sync.remove(['settings', 'migrations']).catch(() => {});
+    }
+  }
 
   const settings: AppSettings = {
     ...DEFAULT_SETTINGS,
@@ -53,15 +67,21 @@ export async function getSettings(): Promise<AppSettings> {
     needsSave = true;
   }
 
+  // Drop the legacy 28 KB corrupted default prompt if it got persisted before.
+  if (settings.systemPrompt && settings.systemPrompt.includes('FREE-Claude-by-ST')) {
+    settings.systemPrompt = '';
+    needsSave = true;
+  }
+
   if (needsSave) {
-    chrome.storage.sync.set({ settings, migrations: newMigrations }).catch(() => {});
+    chrome.storage.local.set({ settings, migrations: newMigrations }).catch(() => {});
   }
 
   return settings;
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  await chrome.storage.sync.set({ settings });
+  await chrome.storage.local.set({ settings });
 }
 
 export async function getConversations(): Promise<Conversation[]> {
