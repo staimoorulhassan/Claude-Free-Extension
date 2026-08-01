@@ -537,12 +537,17 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
     if (anthropicBaseURL && /^claude/i.test(resolvedModel)) {
       const passBody = { ...ab, model: resolvedModel };
       if (debug) console.log('[openai-compat] → (anthropic passthrough)', { provider: config.provider, model: resolvedModel });
+      // Omit auth headers entirely when no key is configured — sending
+      // `Authorization: Bearer ` or `x-api-key: ` with empty values can
+      // produce spurious 401s on strict proxies.
+      const authHeaders: Record<string, string> = apiKey
+        ? { 'Authorization': `Bearer ${apiKey}`, 'x-api-key': apiKey }
+        : {};
       return fetch(`${anthropicBaseURL}/v1/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'x-api-key': apiKey,
+          ...authHeaders,
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true',
         },

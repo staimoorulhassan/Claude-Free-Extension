@@ -133,7 +133,7 @@ describe('createOpenAICompatibleFetch — AgentRouter Anthropic passthrough', ()
     apiKey: 'sk-test-agentrouter',
   };
 
-  it('routes Claude models to the native /v1/messages surface untranslated with a Bearer key', async () => {
+  it('routes Claude models to the native /v1/messages surface untranslated with both auth schemes', async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(sseFrom([JSON.stringify({ type: 'message_stop' })]), {
         status: 200,
@@ -165,6 +165,32 @@ describe('createOpenAICompatibleFetch — AgentRouter Anthropic passthrough', ()
     expect(sentBody.model).toBe('claude-opus-4-7');
     expect(sentBody.messages).toEqual([{ role: 'user', content: 'hi' }]);
     expect(sentBody.stream).toBe(true);
+  });
+
+  it('omits auth headers entirely when no API key is configured', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(sseFrom([JSON.stringify({ type: 'message_stop' })]), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const customFetch = createOpenAICompatibleFetch({ ...AGENTROUTER_CONFIG, apiKey: '' });
+    await customFetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'claude-opus-4-7',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      }),
+    });
+
+    const [, requestInit] = mockFetch.mock.calls[0];
+    expect(requestInit.headers['Authorization']).toBeUndefined();
+    expect(requestInit.headers['x-api-key']).toBeUndefined();
+    // Non-auth headers must still be present.
+    expect(requestInit.headers['anthropic-version']).toBe('2023-06-01');
   });
 
   it('still translates GPT/GLM models through the OpenAI /v1/chat/completions surface', async () => {
