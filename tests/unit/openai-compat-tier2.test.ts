@@ -122,3 +122,70 @@ describe('createOpenAICompatibleFetch — Tier-2 XML tool-call polyfill', () => 
     expect(toolUseStart).toBeUndefined(); // no tool call executed from malformed input
   });
 });
+
+describe('createOpenAICompatibleFetch — AgentRouter Anthropic passthrough', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const AGENTROUTER_CONFIG: ProviderConfig = {
+    provider: 'agentrouter',
+    apiKey: 'sk-test-agentrouter',
+  };
+
+  it('routes Claude models to the native /v1/messages surface untranslated with a Bearer key', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(sseFrom([JSON.stringify({ type: 'message_stop' })]), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const customFetch = createOpenAICompatibleFetch(AGENTROUTER_CONFIG);
+    await customFetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'claude-opus-4-7',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      }),
+    });
+
+    const [calledUrl, requestInit] = mockFetch.mock.calls[0];
+    // Anthropic surface = base WITHOUT /v1 suffix, then /v1/messages — never /chat/completions.
+    expect(calledUrl).toBe('https://agentrouter.org/v1/messages');
+    expect(requestInit.headers['Authorization']).toBe('Bearer sk-test-agentrouter');
+    expect(requestInit.headers['anthropic-version']).toBe('2023-06-01');
+
+    // Body is passed through untranslated — no OpenAI `choices`/`chat` shape,
+    // model rewritten to the resolved Claude id, messages preserved verbatim.
+    const sentBody = JSON.parse(requestInit.body as string);
+    expect(sentBody.model).toBe('claude-opus-4-7');
+    expect(sentBody.messages).toEqual([{ role: 'user', content: 'hi' }]);
+    expect(sentBody.stream).toBe(true);
+  });
+
+  it('still translates GPT/GLM models through the OpenAI /v1/chat/completions surface', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(sseFrom([JSON.stringify({ choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] })]), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const customFetch = createOpenAICompatibleFetch({ ...AGENTROUTER_CONFIG, defaultModel: 'gpt-5.6' });
+    await customFetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'gpt-5.6',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      }),
+    });
+
+    const [calledUrl] = mockFetch.mock.calls[0];
+    expect(calledUrl).toBe('https://agentrouter.org/v1/chat/completions');
+  });
+});

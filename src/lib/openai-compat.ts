@@ -10,6 +10,12 @@ import { buildTier2SystemPromptAddendum, parseTier2Response } from './toolCallPo
 
 interface ProviderPreset {
   baseURL: string;
+  /** Anthropic-native base (no trailing /v1) for providers that expose a real
+   * /v1/messages surface alongside their OpenAI one. When set, Claude-family
+   * models are passed through untranslated to `${anthropicBaseURL}/v1/messages`
+   * instead of being converted to OpenAI /chat/completions — the store already
+   * speaks Anthropic, so this is a straight passthrough. e.g. AgentRouter. */
+  anthropicBaseURL?: string;
   defaultModel: string;
   supportsVision: boolean;
   supportsTools: boolean;
@@ -180,6 +186,9 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     // OpenAI-compatible surface (the adapter always speaks OpenAI). AgentRouter also
     // exposes an Anthropic-native base at https://agentrouter.org (no /v1) for Claude Code.
     baseURL: 'https://agentrouter.org/v1',
+    // Claude models must hit the Anthropic-native surface (base WITHOUT /v1),
+    // per https://agentrouter.org/docs/claude-code.html. GPT/GLM stay on /v1.
+    anthropicBaseURL: 'https://agentrouter.org',
     // Model IDs per https://agentrouter.org/docs/{claude-code,codex}.html:
     // Anthropic-family: claude-opus-4-6 (their default), claude-opus-4-7, claude-opus-4-8.
     // OpenAI/other: gpt-5.6, gpt-5.5, glm-5.2. The live list is auto-fetched from
@@ -487,6 +496,7 @@ async function buildTier2AnthropicStream(openaiStream: ReadableStream<Uint8Array
 export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetch {
   const preset = PROVIDERS[config.provider] ?? {};
   const baseURL = (config.baseURL ?? preset.baseURL ?? '').replace(/\/$/, '');
+  const anthropicBaseURL = (preset.anthropicBaseURL ?? '').replace(/\/$/, '');
   const apiKey = config.apiKey ?? '';
   const defaultModel = config.defaultModel ?? preset.defaultModel ?? 'gpt-4o';
   const modelMap = { ...(preset.modelMap ?? {}), ...(config.modelMap ?? {}) };
@@ -515,6 +525,27 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
     const anthropicModel = (ab['model'] as string) ?? defaultModel;
     const resolvedModel = modelMap[anthropicModel] ?? defaultModel;
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // Anthropic-native passthrough: providers that expose a real /v1/messages
+    // surface (e.g. AgentRouter) must receive Claude-family models UNtranslated.
+    // The store already sends Anthropic format and parses Anthropic SSE, so we
+    // just rewrite the model to the resolved id, point at the native base, and
+    // swap the auth header to the provider's Bearer key. No OpenAI conversion.
+    if (anthropicBaseURL && /^claude/i.test(resolvedModel)) {
+      const passBody = { ...ab, model: resolvedModel };
+      if (debug) console.log('[openai-compat] → (anthropic passthrough)', { provider: config.provider, model: resolvedModel });
+      return fetch(`${anthropicBaseURL}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify(passBody),
+        signal: init?.signal ?? undefined,
+      });
+    }
 
     // T043: providers that don't support native function calling get the Tier-2
     // <thinking>/<tool_call> system-prompt protocol instead of the `tools` param.
