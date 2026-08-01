@@ -156,6 +156,7 @@ describe('createOpenAICompatibleFetch — AgentRouter Anthropic passthrough', ()
     // Anthropic surface = base WITHOUT /v1 suffix, then /v1/messages — never /chat/completions.
     expect(calledUrl).toBe('https://agentrouter.org/v1/messages');
     expect(requestInit.headers['Authorization']).toBe('Bearer sk-test-agentrouter');
+    expect(requestInit.headers['x-api-key']).toBe('sk-test-agentrouter');
     expect(requestInit.headers['anthropic-version']).toBe('2023-06-01');
 
     // Body is passed through untranslated — no OpenAI `choices`/`chat` shape,

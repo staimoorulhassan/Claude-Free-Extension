@@ -529,8 +529,11 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
     // Anthropic-native passthrough: providers that expose a real /v1/messages
     // surface (e.g. AgentRouter) must receive Claude-family models UNtranslated.
     // The store already sends Anthropic format and parses Anthropic SSE, so we
-    // just rewrite the model to the resolved id, point at the native base, and
-    // swap the auth header to the provider's Bearer key. No OpenAI conversion.
+    // just rewrite the model to the resolved id and point at the native base.
+    // Auth: send BOTH schemes — AgentRouter's docs say it reads a Bearer token
+    // (ANTHROPIC_AUTH_TOKEN), but the genuine Anthropic /v1/messages surface
+    // authenticates via x-api-key. Sending both satisfies whichever the proxy
+    // actually enforces; the unused one is ignored.
     if (anthropicBaseURL && /^claude/i.test(resolvedModel)) {
       const passBody = { ...ab, model: resolvedModel };
       if (debug) console.log('[openai-compat] → (anthropic passthrough)', { provider: config.provider, model: resolvedModel });
@@ -539,6 +542,7 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
+          'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true',
         },
