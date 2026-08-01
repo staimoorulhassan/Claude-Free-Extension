@@ -287,6 +287,15 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .apikey-saved-badge { font-size: 10px; color: var(--success); font-weight: 600; background: var(--success-bg); padding: 1px 6px; border-radius: 10px; }
 [data-theme=dark] .apikey-saved-badge { background: #14532d; color: #86efac; }
 
+/* Provider onboarding (free-provider signup prompt) */
+.provider-onboarding { font-size: 11px; color: var(--text2); line-height: 1.45; }
+.provider-onboarding-actions { display: flex; gap: 6px; margin-top: 6px; }
+.provider-onboarding-actions button {
+  flex: 1; font-size: 11px; padding: 5px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg2); color: var(--text);
+}
+.provider-onboarding-actions button:hover { background: var(--bg3); }
+
 /* ── Recording button ────────────────────────────────────────────────────── */
 .icon-btn--recording { color: var(--error) !important; animation: rec-pulse 1.4s ease-in-out infinite; }
 @keyframes rec-pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }

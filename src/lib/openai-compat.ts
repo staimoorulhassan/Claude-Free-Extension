@@ -176,6 +176,29 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     },
     contextWindow: 128_000, // default model is gpt-4o-shaped; per-model override recommended for other picks
   },
+  agentrouter: {
+    // OpenAI-compatible surface (the adapter always speaks OpenAI). AgentRouter also
+    // exposes an Anthropic-native base at https://agentrouter.org (no /v1) for Claude Code.
+    baseURL: 'https://agentrouter.org/v1',
+    // Model IDs per https://agentrouter.org/docs/{claude-code,codex}.html:
+    // Anthropic-family: claude-opus-4-6 (their default), claude-opus-4-7, claude-opus-4-8.
+    // OpenAI/other: gpt-5.6, gpt-5.5, glm-5.2. The live list is auto-fetched from
+    // /v1/models in Settings, so this table is only the fallback mapping.
+    defaultModel: 'claude-opus-4-6',
+    supportsVision: true,
+    supportsTools: true,
+    modelMap: {
+      'claude-opus-4-7': 'claude-opus-4-7',
+      'claude-opus-4-5': 'claude-opus-4-6',
+      'claude-sonnet-4-6': 'claude-opus-4-6',
+      'claude-sonnet-4-5': 'claude-opus-4-6',
+      'claude-haiku-4-5': 'claude-opus-4-6',
+      'claude-3-5-sonnet-20241022': 'claude-opus-4-6',
+      'claude-3-5-haiku-20241022': 'claude-opus-4-6',
+      'claude-3-opus-20240229': 'claude-opus-4-8',
+    },
+    contextWindow: 200_000,
+  },
   fireworks: {
     baseURL: 'https://api.fireworks.ai/inference/v1',
     defaultModel: 'accounts/fireworks/models/llama-v3p3-70b-instruct',

@@ -23,6 +23,10 @@ export interface ComputerAction {
   tab_id?: number;            // manage_tabs
   prompt?: string;            // ask_user
   requires_manual_action?: boolean; // ask_user
+  // ── Agent intelligence additions ───────────────────────────────────────────
+  query?: string;             // web_search: search query; find: natural-language element query
+  domain?: string;            // discover_site: site to analyze without navigating
+  max_chars?: number;         // web_fetch / get_page_text: output cap
 }
 
 export interface ComputerToolResult {
@@ -49,8 +53,11 @@ export async function executeComputerAction(action: ComputerAction): Promise<Com
 export const COMPUTER_TOOL = {
   name: 'computer',
   description: [
-    'Control the active browser tab using real input events.',
+    'Control the active browser tab using real input events, and research the web without opening a tab.',
     'IMPORTANT:',
+    '- RESEARCH FIRST, NAVIGATE SECOND. Never guess a deep URL like "site.com/pricing" — guessed URLs 404 or trip bot walls.',
+    '  Use action="web_search" to find the exact page, action="discover_site" to learn a site\'s real structure (sitemap + nav + robots.txt),',
+    '  and action="web_fetch" to READ a page without opening a tab (cheapest, no bot wall). Only navigate a tab when you must interact with the page.',
     '- To open a URL: use action="navigate" with the url field. NEVER try to click the address bar.',
     '- To understand the page: use action="read_page_state" to get a labelled accessibility tree plus any console/network errors (read_page still works but has no error capture).',
     '- To click a specific element: use action="click_element" with a ref_id from read_page_state.',
@@ -58,9 +65,13 @@ export const COMPUTER_TOOL = {
     '- To click by position: take a screenshot first to see the layout, then click coordinates.',
     '- To run custom JavaScript for data extraction: use action="execute_js" (always requires user approval).',
     '- To open/switch/close tabs as part of a task: use action="manage_tabs".',
+    '- To read a page as plain text (cheaper than the accessibility tree): use action="get_page_text".',
+    '- To locate an element by description instead of reading the whole page: use action="find" with a query.',
+    '- To see all open tabs: use action="tabs_context".',
     '- To pause for a CAPTCHA, 2FA, or an irreversible action: use action="ask_user".',
+    '- If you hit a CAPTCHA, 403 or "Just a moment" page: STOP navigating. Use web_search/web_fetch instead, or ask_user. Never try to bypass a bot check.',
     '- A glowing border and cursor appear on the page while you are in control.',
-    'Preferred flow: navigate → read_page_state → click_element/type_text → read_page_state to verify.',
+    'Preferred flow: web_search/discover_site → web_fetch (read) → navigate only if interaction is needed → read_page_state → click_element/type_text → read_page_state to verify.',
   ].join(' '),
   input_schema: {
     type: 'object',
@@ -68,7 +79,9 @@ export const COMPUTER_TOOL = {
       action: {
         type: 'string',
         enum: [
+          'web_search', 'web_fetch', 'discover_site', 'sitemap_urls',
           'screenshot', 'navigate', 'read_page', 'read_page_state',
+          'get_page_text', 'find', 'tabs_context',
           'left_click', 'right_click', 'double_click', 'middle_click',
           'click_element', 'type', 'type_text', 'key', 'scroll', 'left_click_drag', 'wait',
           'execute_js', 'manage_tabs', 'ask_user',
@@ -77,7 +90,19 @@ export const COMPUTER_TOOL = {
       },
       url: {
         type: 'string',
-        description: 'URL to navigate to (action="navigate"), or the URL to open a new tab to (action="manage_tabs", op="open"). Example: "https://google.com"',
+        description: 'URL to navigate to (action="navigate"), to read without opening a tab (action="web_fetch"), or to open a new tab to (action="manage_tabs", op="open"). Example: "https://google.com"',
+      },
+      query: {
+        type: 'string',
+        description: 'Search query (action="web_search") or natural-language element description (action="find"). Example: "agentrouter pricing page"',
+      },
+      domain: {
+        type: 'string',
+        description: 'Site to analyze without navigating (action="discover_site"/"sitemap_urls"). Example: "agentrouter.org"',
+      },
+      max_chars: {
+        type: 'integer',
+        description: 'Output cap in characters (action="web_fetch"/"get_page_text"). Default 20000.',
       },
       ref_id: {
         type: 'string',

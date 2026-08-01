@@ -5,7 +5,7 @@ import { getSettings, saveSettings, getConversations, saveConversations, generat
 import type { ProviderVault } from '@/lib/storage';
 import { getRecordings, saveRecordings, recordingToText } from '@/lib/recordings';
 import type { Recording } from '@/lib/recordings';
-import { createOpenAICompatibleFetch } from '@/lib/openai-compat';
+import { createOpenAICompatibleFetch, resolveContextWindow } from '@/lib/openai-compat';
 import { getEnabledTools, executeTool } from '@/lib/tools';
 import { detectPattern, selectStrategy } from '@/lib/tokenOptimizer';
 import { createSteelManager } from '@/lib/steel-session';
@@ -167,18 +167,87 @@ function compressBlock(block: ContentBlock, keepImage: boolean, maxTextChars: nu
   };
 }
 
-export function compressForApi(messages: AnthropicMessage[], debugMode: boolean = false): AnthropicMessage[] {
+// Builds a compact "what happened so far" block from the messages the sliding
+// window is about to drop. Purely deterministic — no extra model call — so it
+// costs nothing and can't fail mid-task. Without this, dropping the head of a
+// long task silently erases the goal and everything already done.
+export function summarizeDropped(dropped: AnthropicMessage[]): string {
+  if (dropped.length === 0) return '';
+
+  let firstUserText = '';
+  const actions: string[] = [];
+  const urls: string[] = [];
+
+  for (const msg of dropped) {
+    if (!Array.isArray(msg.content)) {
+      if (msg.role === 'user' && !firstUserText && typeof msg.content === 'string') {
+        firstUserText = truncateText(msg.content, 300);
+      }
+      continue;
+    }
+    for (const block of msg.content as ContentBlock[]) {
+      if (block.type === 'text' && msg.role === 'user' && !firstUserText) {
+        firstUserText = truncateText(block.text, 300);
+      } else if (block.type === 'tool_use') {
+        const input = (block.input ?? {}) as Record<string, unknown>;
+        const act = typeof input['action'] === 'string' ? input['action'] : block.name;
+        const detail =
+          typeof input['url'] === 'string' ? ` ${input['url']}`
+          : typeof input['query'] === 'string' ? ` "${input['query']}"`
+          : typeof input['domain'] === 'string' ? ` ${input['domain']}`
+          : typeof input['ref_id'] === 'string' ? ` ${input['ref_id']}`
+          : '';
+        actions.push(`${act}${detail}`);
+        if (typeof input['url'] === 'string') urls.push(input['url']);
+      }
+    }
+  }
+
+  const lines = [`[Earlier context — ${dropped.length} older messages were trimmed to save tokens]`];
+  if (firstUserText) lines.push(`Original request: ${firstUserText}`);
+  if (actions.length) {
+    const shown = actions.slice(-25);
+    lines.push(`Actions already taken (${actions.length} total, showing last ${shown.length}): ${shown.join(' → ')}`);
+  }
+  if (urls.length) lines.push(`Last URL visited: ${urls[urls.length - 1]}`);
+  lines.push('Continue from here — do NOT restart the task from the beginning.');
+  return lines.join('\n');
+}
+
+export function compressForApi(
+  messages: AnthropicMessage[],
+  debugMode: boolean = false,
+  contextWindow?: number,
+): AnthropicMessage[] {
   // Issue 10: drop empty assistant placeholder messages (failed streams)
   const noEmpty = messages.filter(msg =>
     !(msg.role === 'assistant' && Array.isArray(msg.content) && msg.content.length === 0)
   );
 
-  const { maxMessages, maxTextChars } = computeEffectiveLimits();
+  const { maxMessages, maxTextChars } = computeEffectiveLimits(contextWindow);
 
   // Sliding window
-  const windowed = noEmpty.length > maxMessages
-    ? noEmpty.slice(-maxMessages)
-    : noEmpty;
+  const overflow = noEmpty.length > maxMessages;
+  let windowed = overflow ? noEmpty.slice(-maxMessages) : noEmpty;
+  let droppedCount = overflow ? noEmpty.length - maxMessages : 0;
+
+  // A raw slice can start mid-round, leaving a tool_result whose matching
+  // assistant tool_use was cut away — strict providers reject that. Advance to
+  // the next clean boundary (a user turn carrying no tool_result).
+  if (overflow) {
+    const isCleanStart = (m: AnthropicMessage) =>
+      m.role === 'user' &&
+      (!Array.isArray(m.content) || !(m.content as ContentBlock[]).some(b => b.type === 'tool_result'));
+    let start = 0;
+    while (start < windowed.length && !isCleanStart(windowed[start])) start++;
+    // Only apply if a boundary exists and it doesn't wipe the whole window.
+    if (start > 0 && start < windowed.length) {
+      windowed = windowed.slice(start);
+      droppedCount += start;
+    }
+  }
+
+  const dropped = droppedCount > 0 ? noEmpty.slice(0, droppedCount) : [];
 
   // Split: always-keep tail vs compressible head
   const cutoff = Math.max(0, windowed.length - CTX_ALWAYS_KEEP);
@@ -206,7 +275,29 @@ export function compressForApi(messages: AnthropicMessage[], debugMode: boolean 
     return { ...msg, content: newContent };
   }).reverse();
 
-  return [...compressedHead, ...tail];
+  // Prepend the "what happened so far" recap so trimming the head doesn't erase
+  // the goal. Merged into the first user message when possible (keeping the
+  // user/assistant alternation intact for strict providers).
+  const result = [...compressedHead, ...tail];
+  if (dropped.length > 0) {
+    const recap = summarizeDropped(dropped);
+    if (recap) {
+      if (debugMode) {
+        console.log(`[Context Compression] Trimmed ${dropped.length} messages, injected recap (${recap.length} chars)`);
+      }
+      const first = result[0];
+      if (first && first.role === 'user') {
+        const existing: ContentBlock[] = Array.isArray(first.content)
+          ? (first.content as ContentBlock[])
+          : [{ type: 'text', text: String(first.content) }];
+        result[0] = { ...first, content: [{ type: 'text', text: recap }, ...existing] };
+      } else {
+        result.unshift({ role: 'user', content: [{ type: 'text', text: recap }] });
+      }
+    }
+  }
+
+  return result;
 }
 
 // Issue 16: generate a short title for the conversation via the provider
@@ -659,6 +750,7 @@ export const useStore = create<Store>((set, get) => ({
         const historyMessages = compressForApi(
           toAnthropicMessages(activeConversation(get)?.messages.slice(0, -1) ?? []),
           debugMode,
+          resolveContextWindow(settings.provider),
         );
 
         const body: Record<string, unknown> = {
@@ -678,9 +770,23 @@ export const useStore = create<Store>((set, get) => ({
               'IMPORTANT: If the task is ambiguous or you need clarification, ask the user a question BEFORE calling tools.',
               'For clear tasks: call the computer tool directly without asking first.',
               '',
-              'TOOL ACTIONS (use these in sequence):',
+              'RESEARCH BEFORE YOU NAVIGATE. Never guess a deep URL (e.g. "site.com/pricing") — guessed paths 404 or trigger bot walls.',
+              'Cheapest-first order: web_search → discover_site → web_fetch → only then navigate a real tab.',
+              'Navigate a tab ONLY when you must interact with the page (click, type, log in). If you just need to READ, use web_fetch.',
+              'When you do navigate, go to the homepage/root first, read it, then follow links that actually exist.',
+              '',
+              'RESEARCH ACTIONS (no tab, no bot wall, low token cost):',
+              '  web_search      → search the web; returns titles, URLs and snippets',
+              '  discover_site   → learn a site\'s REAL structure (sitemap.xml + nav links + robots.txt) without opening it',
+              '  sitemap_urls    → full sitemap URL list for a domain',
+              '  web_fetch       → fetch a URL and read it as plain text (no tab opened)',
+              '',
+              'BROWSER ACTIONS (use these in sequence):',
               '  navigate        → go to a URL',
               '  read_page_state → get labelled interactive elements plus any console/network errors (prefer this over read_page)',
+              '  get_page_text   → plain readable text of the current tab (cheaper than read_page_state when you only need to READ)',
+              '  find            → locate an element by description instead of reading the whole page',
+              '  tabs_context    → list the open tabs',
               '  click_element   → click by ref ID from read_page_state',
               '  type_text       → type into a specific field by ref ID, with optional submit',
               '  type            → type text into whatever is already focused',
@@ -692,10 +798,14 @@ export const useStore = create<Store>((set, get) => ({
               '  manage_tabs     → open/switch/close tabs as part of this task',
               '  ask_user        → pause and ask the user a question, or wait for them to handle a CAPTCHA/2FA/irreversible action',
               '',
-              'EFFICIENCY: prefer read_page_state → click_element over screenshot → coordinate click.',
+              'EFFICIENCY: prefer web_fetch over navigating, and read_page_state → click_element over screenshot → coordinate click.',
               'Only take a screenshot when you must SEE something (images, charts, CAPTCHAs).',
               'After navigate, always call read_page_state or wait before any click.',
               'If click_element reports the target is obscured by an overlay, it will be auto-retried after dismissal — you don\'t need to handle that yourself.',
+              '',
+              'BLOCKED PAGES: if you hit a CAPTCHA, a 403, or a "Just a moment"/"verify you are human" page, STOP.',
+              'Do not retry the same URL and never attempt to bypass a bot check. Instead: use web_search/web_fetch for the same',
+              'information elsewhere, or call ask_user so the person can solve it themselves. Respect robots.txt-disallowed paths.',
               '',
               settings.systemPrompt ? `User instructions: ${settings.systemPrompt}` : '',
             ].join('\n').trim()

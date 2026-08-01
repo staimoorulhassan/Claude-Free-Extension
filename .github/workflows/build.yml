@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -48,3 +49,16 @@ jobs:
         uses: actions/attest-build-provenance@v4.1.0
         with:
           subject-path: dist/
+
+      # On a version tag, zip the pre-built dist/ and attach it to the GitHub
+      # Release so users can download → unzip → "Load unpacked" with no npm step.
+      - name: Package dist.zip
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: cd dist && zip -r ../claude-free-extension-${{ github.ref_name }}.zip . && cd ..
+
+      - name: Attach dist.zip to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: claude-free-extension-${{ github.ref_name }}.zip
+          fail_on_unmatched_files: true
