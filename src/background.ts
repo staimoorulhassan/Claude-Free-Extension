@@ -18,6 +18,24 @@ import type { ExecutionJournal } from './lib/types';
 // Created lazily on the first active task, closed once no journal is in_progress —
 // not held open at all times, so an idle extension has zero extra background cost.
 
+// ── Offscreen heartbeat port ──────────────────────────────────────────────────
+// offscreen.ts opens a long-lived port named 'offscreen-heartbeat' and pings it
+// every 20s. Without a listener here the connect fails with "Unchecked
+// runtime.lastError: Could not establish connection. Receiving end does not
+// exist." and the keepalive silently does nothing. Accepting the port is what
+// lets each ping reset the MV3 service-worker idle timer.
+
+const offscreenHeartbeatPorts = new Set<chrome.runtime.Port>();
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'offscreen-heartbeat') return;
+  offscreenHeartbeatPorts.add(port);
+  port.onMessage.addListener(() => { /* receipt wakes the SW and resets the idle timer */ });
+  port.onDisconnect.addListener(() => {
+    offscreenHeartbeatPorts.delete(port);
+  });
+});
+
 let offscreenReady: Promise<void> | null = null;
 
 async function ensureOffscreenDocument(): Promise<void> {
