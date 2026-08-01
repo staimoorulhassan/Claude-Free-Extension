@@ -34,10 +34,10 @@ Unlike other AI extensions, it ships with **browser computer use** — the AI ca
 
 ### Install (60 seconds)
 
-1. **Download** — clone or [download the zip](https://github.com/staimoorulhassan/Claude-Free-Extension/archive/refs/heads/main.zip) and unzip
+1. **Download** — grab **`claude-free-extension-vX.Y.Z.zip`** from the [latest release](https://github.com/staimoorulhassan/Claude-Free-Extension/releases/latest) and unzip it. (This zip is the pre-built extension — no source, no npm.)
 2. **Open Chrome** → go to `chrome://extensions`
 3. **Enable Developer Mode** (toggle in top-right)
-4. **Click "Load unpacked"** → select the `dist/` folder
+4. **Click "Load unpacked"** → select the unzipped folder
 5. **Click the puzzle icon** in Chrome toolbar → pin "Claude Free"
 6. **Open any webpage** → press `Ctrl+E` (or `Cmd+E` on Mac) to open the panel
 

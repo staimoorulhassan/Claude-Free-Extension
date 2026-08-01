@@ -8,6 +8,10 @@ import {
   newJournal, writeJournal, readJournal,
   findInProgressJournals, resolveJournalOnStartup,
 } from './lib/journal';
+import {
+  searchWeb, discoverSite, formatDiscoveredSite, summarizeDiscoveredSite,
+  fetchPageAsText, fetchSitemapUrls,
+} from './lib/webResearch';
 import type { ExecutionJournal } from './lib/types';
 
 // ── Offscreen keepalive lifecycle (T033/T034) ────────────────────────────────────
@@ -438,6 +442,10 @@ interface ComputerAction {
   tab_id?: number;
   prompt?: string;
   requires_manual_action?: boolean;
+  // ── Agent intelligence additions ───────────────────────────────────────────
+  query?: string;
+  domain?: string;
+  max_chars?: number;
 }
 
 interface ComputerToolResult {
@@ -446,9 +454,74 @@ interface ComputerToolResult {
   source?: { type: 'base64'; media_type: string; data: string };
 }
 
+// ── Research actions (no tab needed) ─────────────────────────────────────────
+// web_search / web_fetch / discover_site / sitemap_urls run in the service worker
+// and never touch the user's tabs — so the agent can research BEFORE navigating,
+// and never trips a bot wall by blindly navigating to guessed deep URLs.
+
+const RESEARCH_ACTIONS = new Set(['web_search', 'web_fetch', 'discover_site', 'sitemap_urls']);
+
+async function handleResearchAction(action: ComputerAction): Promise<ComputerToolResult[]> {
+  switch (action.action) {
+    case 'web_search': {
+      const query = (action.query ?? '').trim();
+      if (!query) return [{ type: 'text', text: 'Error: query required for web_search' }];
+      try {
+        const results = await searchWeb(query);
+        const lines = [`Search results for "${query}":`];
+        for (let i = 0; i < results.length; i++) {
+          lines.push(`${i + 1}. ${results[i].title} — ${results[i].url}`);
+          if (results[i].snippet) lines.push(`   ${results[i].snippet}`);
+        }
+        return [{ type: 'text', text: lines.join('\n') }];
+      } catch (e) {
+        return [{ type: 'text', text: `Search error: ${(e as Error).message}` }];
+      }
+    }
+
+    case 'web_fetch': {
+      const url = (action.url ?? '').trim();
+      if (!url) return [{ type: 'text', text: 'Error: url required for web_fetch' }];
+      try {
+        const page = await fetchPageAsText(url, action.max_chars ?? 20000);
+        return [{ type: 'text', text: `Fetched "${page.title}" (${page.url})\n${page.text}` }];
+      } catch (e) {
+        return [{ type: 'text', text: `web_fetch error: ${(e as Error).message}` }];
+      }
+    }
+
+    case 'discover_site': {
+      const domain = (action.domain ?? '').trim();
+      if (!domain) return [{ type: 'text', text: 'Error: domain required for discover_site' }];
+      try {
+        const site = await discoverSite(domain);
+        return [{ type: 'text', text: `[${summarizeDiscoveredSite(site)}]\n${formatDiscoveredSite(site)}` }];
+      } catch (e) {
+        return [{ type: 'text', text: `discover_site error: ${(e as Error).message}` }];
+      }
+    }
+
+    case 'sitemap_urls': {
+      const domain = (action.domain ?? '').trim();
+      if (!domain) return [{ type: 'text', text: 'Error: domain required for sitemap_urls' }];
+      const urls = await fetchSitemapUrls(domain);
+      if (!urls.length) return [{ type: 'text', text: `No sitemap found for ${domain}.` }];
+      const cap = Math.min(urls.length, 100);
+      return [{ type: 'text', text: `Sitemap URLs for ${domain} (${urls.length} total):\n${urls.slice(0, cap).join('\n')}${urls.length > cap ? `\n… ${urls.length - cap} more` : ''}` }];
+    }
+
+    default:
+      return [{ type: 'text', text: `Unknown research action: ${action.action}` }];
+  }
+}
+
 // ── Computer use handler ──────────────────────────────────────────────────────
 
 async function handleComputerUse(action: ComputerAction, windowId?: number): Promise<ComputerToolResult[]> {
+  if (RESEARCH_ACTIONS.has(action.action)) {
+    return handleResearchAction(action);
+  }
+
   const tabId = await getWebTabId(windowId);
 
   switch (action.action) {
@@ -661,6 +734,124 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
       const result = results[0]?.result as { pageContent?: string; viewport?: { width: number; height: number }; error?: string } | null;
       if (result?.error) return [{ type: 'text', text: `Error: ${result.error}` }];
       return [{ type: 'text', text: `Viewport: ${result?.viewport?.width}x${result?.viewport?.height}\n${result?.pageContent}` }];
+    }
+
+    case 'get_page_text': {
+      // Claude-style "get_page_text": read long pages as plain text instead of
+      // scrolling through them. Runs in the isolated world (safe; no page globals).
+      const maxChars = action.max_chars ?? 40000;
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => {
+            const max = 50000;
+            let text = '';
+            try {
+              const clone = document.body ? (document.body.cloneNode(true) as HTMLElement) : null;
+              if (clone) {
+                clone.querySelectorAll('script,style,noscript,svg,canvas,iframe,audio,video,template,[hidden]').forEach((el: Element) => el.remove());
+                text = (clone.innerText ?? '').replace(/\n{3,}/g, '\n\n').trim();
+              }
+            } catch { /* fall through */ }
+            if (text.length > max) text = text.slice(0, max) + '\n…[truncated]';
+            return { title: document.title ?? '', url: window.location.href ?? '', text };
+          },
+        });
+        const page = results[0]?.result as ({ title: string; url: string; text: string }) | null;
+        if (!page) return [{ type: 'text', text: 'Error: could not extract page text.' }];
+        const capped = page.text.slice(0, maxChars) + (page.text.length > maxChars ? '\n…[truncated by max_chars]' : '');
+        return [{ type: 'text', text: `Page text: "${capped}"` }];
+      } catch (e) {
+        return [{ type: 'text', text: `get_page_text error: ${(e as Error).message}` }];
+      }
+    }
+
+    case 'find': {
+      // Claude-style "find": natural-language element search using the
+      // accessibility tree (MAIN world — needs __generateAccessibilityTree).
+      const query = (action.query ?? '').trim();
+      if (!query) return [{ type: 'text', text: 'Error: query required for find' }];
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          world: 'MAIN' as chrome.scripting.ExecutionWorld,
+          func: (q: string) => {
+            const win = window as unknown as Record<string, unknown>;
+            const fn = win.__generateAccessibilityTree as ((filter: string, depth: number, cap: number, _r?: unknown) => { pageContent?: string } | undefined) | undefined;
+            if (typeof fn !== 'function') {
+              return { error: 'Accessibility tree not ready.', matches: [] as string[] };
+            }
+            const tree = fn('interactive', 15, 50000, undefined);
+            const lines = (tree?.pageContent ?? '').split('\n');
+            const tokens = q.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2).slice(0, 12);
+            const scored: Array<{ line: string; score: number }> = [];
+            for (const line of lines) {
+              const name = (line.match(/"([^"]*)"/) ?? [])[1] ?? '';
+              if (!name) continue;
+              const lower = name.toLowerCase();
+              let score = 0;
+              for (const t of tokens) if (lower.includes(t)) score += t.length;
+              if (score > 0) scored.push({ line: line.slice(0, 400), score });
+            }
+            scored.sort((a, b) => b.score - a.score);
+            return { matches: scored.slice(0, 20).map(s => s.line) };
+          },
+          args: [query],
+        });
+        const res = results[0]?.result as { error?: string; matches?: string[] } | null;
+        if (res?.error) return [{ type: 'text', text: `Error: ${res.error}` }];
+        const matches = res?.matches ?? [];
+        if (!matches.length) return [{ type: 'text', text: `No elements matched "${query}". Try read_page_state to see the tree.` }];
+        return [{ type: 'text', text: `Matches for "${query}":\n${matches.join('\n')}` }];
+      } catch (e) {
+        return [{ type: 'text', text: `find error: ${(e as Error).message}` }];
+      }
+    }
+
+    case 'tabs_context': {
+      // Claude-style tabs_context: current tab metadata + any tabs this task opened,
+      // including bot-wall detection so the agent can switch strategy without navigating.
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => {
+            const bodyText = (document.body?.innerText ?? '');
+            const suspectedBotWall =
+              /just a moment|verify you are human|attention required|cf-browser-verification/i.test(bodyText.slice(0, 4000)) ||
+              document.title.toLowerCase().includes('just a moment');
+            return {
+              title: document.title ?? '',
+              url: window.location.href ?? '',
+              readyState: document.readyState,
+              suspectedBotWall,
+            };
+          },
+        });
+        const ctx = results[0]?.result as ({ title: string; url: string; readyState: string; suspectedBotWall: boolean }) | null;
+        const extras = await Promise.all(
+          [...currentTaskOpenedTabs].filter(id => id !== tabId).map(async (id) => {
+            try {
+              const t = await chrome.tabs.get(id);
+              return { tabId: id, title: t.title ?? '', url: t.url ?? '' };
+            } catch { return null; }
+          }),
+        );
+        const others = extras.filter((t): t is { tabId: number; title: string; url: string } => t !== null);
+        const lines = [
+          `Current tab: ${ctx?.title ?? ''} — ${ctx?.url ?? ''}`,
+          `State: ${ctx?.readyState ?? ''}`,
+          ctx?.suspectedBotWall
+            ? 'WARNING: This tab looks like a bot-protection challenge (Cloudflare "Just a moment" etc.). Do NOT keep hammering it — stop and reconsider: use web_search/web_fetch/discover_site instead, or ask_user for manual help. Never attempt to bypass the check.'
+            : '',
+        ];
+        if (others.length) {
+          lines.push(`Task tabs (${others.length}):`);
+          for (const t of others) lines.push(`  - tab ${t.tabId}: ${t.title} — ${t.url}`);
+        }
+        return [{ type: 'text', text: lines.filter(Boolean).join('\n') }];
+      } catch (e) {
+        return [{ type: 'text', text: `tabs_context error: ${(e as Error).message}` }];
+      }
     }
 
     case 'read_page_state': {

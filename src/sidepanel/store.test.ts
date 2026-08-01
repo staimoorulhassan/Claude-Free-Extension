@@ -11,7 +11,10 @@ const { customFetchMock, executeToolMock, getEnabledToolsMock } = vi.hoisted(() 
   getEnabledToolsMock: vi.fn(() => [] as unknown[]),
 }));
 
-vi.mock('@/lib/openai-compat', () => ({
+// Partial mock: only the fetch factory is stubbed. resolveContextWindow (used by
+// compressForApi) stays real so the compression path is exercised for real.
+vi.mock('@/lib/openai-compat', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/lib/openai-compat')>()),
   createOpenAICompatibleFetch: vi.fn(() => customFetchMock),
 }));
 
@@ -115,10 +118,16 @@ describe('compressForApi', () => {
 
     const result = compressForApi(messages, true);
 
-    expect(logSpy).toHaveBeenCalledTimes(1);
-    expect(logSpy.mock.calls[0][0]).toMatch(/Very long conversation \(51 msgs\)/);
-    // Sliding window still applies: only the last 40 messages are kept.
-    expect(result.length).toBe(40);
+    const logged = logSpy.mock.calls.map(c => String(c[0]));
+    expect(logged.some(l => /Very long conversation \(51 msgs\)/.test(l))).toBe(true);
+    // Trimming the head also injects a recap of what was dropped.
+    expect(logged.some(l => /Trimmed \d+ messages, injected recap/.test(l))).toBe(true);
+    // Sliding window applies (40 max) and may give up one more message to start
+    // on a clean round boundary; the recap is merged into the first user turn.
+    expect(result.length).toBeLessThanOrEqual(40);
+    expect(result[0].role).toBe('user');
+    const firstBlocks = result[0].content as ContentBlock[];
+    expect((firstBlocks[0] as { text: string }).text).toMatch(/Earlier context/);
   });
 
   it('does not log the very-long-conversation notice when debugMode is false, even if > 50 messages', () => {
@@ -150,7 +159,10 @@ describe('compressForApi', () => {
 
     compressForApi(messages, true);
 
-    expect(logSpy).not.toHaveBeenCalled();
+    // The very-long notice must not fire at exactly 50. (50 > the 40-message
+    // window, so the separate trim/recap notice legitimately does.)
+    const logged = logSpy.mock.calls.map(c => String(c[0]));
+    expect(logged.some(l => /Very long conversation/.test(l))).toBe(false);
   });
 
   it('still drops empty assistant placeholder messages when debugMode is true', () => {
