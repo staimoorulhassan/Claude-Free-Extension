@@ -35,6 +35,19 @@ export async function fetchProviderModels(config: ProviderConfig): Promise<Model
   const base = (config.baseURL || preset?.baseURL || '').replace(/\/$/, '');
   if (!base) return { free: [], paid: [] };
 
+  // Guard against half-typed base URLs. While the user types a custom baseURL,
+  // the debounced fetch fires on every keystroke — "https://agentrou" would hit
+  // "https://agentrou/models" and spew CSP errors. Only fetch once the URL parses
+  // and has a plausible host (a registrable domain, or an explicit localhost/IP).
+  let host = '';
+  try {
+    host = new URL(base).hostname;
+  } catch {
+    return { free: [], paid: [] };
+  }
+  const isLocal = host === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  if (!isLocal && !/\.[a-z]{2,}$/i.test(host)) return { free: [], paid: [] };
+
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), 8000);
 
