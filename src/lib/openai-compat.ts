@@ -16,6 +16,10 @@ interface ProviderPreset {
    * instead of being converted to OpenAI /chat/completions — the store already
    * speaks Anthropic, so this is a straight passthrough. e.g. AgentRouter. */
   anthropicBaseURL?: string;
+  /** When true (together with anthropicBaseURL), EVERY request — not just
+   * Claude-family models — is sent untranslated to `${anthropicBaseURL}/v1/messages`.
+   * Used by the agentrouter "Anthropic endpoint" profile. */
+  anthropicNative?: boolean;
   defaultModel: string;
   supportsVision: boolean;
   supportsTools: boolean;
@@ -183,16 +187,17 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     contextWindow: 128_000, // default model is gpt-4o-shaped; per-model override recommended for other picks
   },
   agentrouter: {
-    // OpenAI-compatible surface (the adapter always speaks OpenAI). AgentRouter also
-    // exposes an Anthropic-native base at https://agentrouter.org (no /v1) for Claude Code.
+    // ── AgentRouter — Anthropic endpoint (Claude Code surface) ───────────────
+    // Every message is sent UNTRANSLATED to the Anthropic-native surface at
+    // https://agentrouter.org/v1/messages (anthropicNative: true). baseURL stays
+    // on the /v1 OpenAI surface so model listing (fetchProviderModels → /v1/models)
+    // and quota probes keep working.
+    // Docs: https://agentrouter.org/docs/claude-code.html
     baseURL: 'https://agentrouter.org/v1',
-    // Claude models must hit the Anthropic-native surface (base WITHOUT /v1),
-    // per https://agentrouter.org/docs/claude-code.html. GPT/GLM stay on /v1.
     anthropicBaseURL: 'https://agentrouter.org',
-    // Model IDs per https://agentrouter.org/docs/{claude-code,codex}.html:
-    // Anthropic-family: claude-opus-4-6 (their default), claude-opus-4-7, claude-opus-4-8.
-    // OpenAI/other: gpt-5.6, gpt-5.5, glm-5.2. The live list is auto-fetched from
-    // /v1/models in Settings, so this table is only the fallback mapping.
+    anthropicNative: true,
+    // Model IDs per https://agentrouter.org/docs/claude-code.html:
+    // claude-opus-4-6 (their default), claude-opus-4-7, claude-opus-4-8.
     defaultModel: 'claude-opus-4-6',
     supportsVision: true,
     supportsTools: true,
@@ -205,6 +210,29 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
       'claude-3-5-sonnet-20241022': 'claude-opus-4-6',
       'claude-3-5-haiku-20241022': 'claude-opus-4-6',
       'claude-3-opus-20240229': 'claude-opus-4-8',
+    },
+    contextWindow: 200_000,
+  },
+  'agentrouter-openai': {
+    // ── AgentRouter — OpenAI-compatible endpoint (Codex surface) ─────────────
+    // Endpoint URL is PRE-CONFIGURED to https://agentrouter.org/v1. Messages are
+    // translated Anthropic→OpenAI by this adapter and POSTed to /chat/completions.
+    // Docs: https://agentrouter.org/docs/codex.html
+    baseURL: 'https://agentrouter.org/v1',
+    defaultModel: 'gpt-5.6',
+    supportsVision: true,
+    supportsTools: true,
+    // Claude-family requests are remapped to AgentRouter's OpenAI models on this
+    // surface (Claude itself belongs on the Anthropic endpoint profile above).
+    modelMap: {
+      'claude-opus-4-7': 'gpt-5.6',
+      'claude-opus-4-5': 'gpt-5.6',
+      'claude-sonnet-4-6': 'gpt-5.6',
+      'claude-sonnet-4-5': 'gpt-5.6',
+      'claude-haiku-4-5': 'glm-5.2',
+      'claude-3-5-sonnet-20241022': 'gpt-5.6',
+      'claude-3-5-haiku-20241022': 'glm-5.2',
+      'claude-3-opus-20240229': 'gpt-5.6',
     },
     contextWindow: 200_000,
   },
@@ -491,12 +519,59 @@ async function buildTier2AnthropicStream(openaiStream: ReadableStream<Uint8Array
   });
 }
 
+// ─── Base URL resolution ──────────────────────────────────────────────────────
+
+/**
+ * Resolves the effective OpenAI-compatible base URL for a provider config and
+ * normalizes common user-input mistakes:
+ *
+ * 1. Scheme — remote hosts are forced to https. The extension_pages CSP only
+ *    permits https for remote providers, so a user-typed `http://host` base
+ *    would be blocked on every request (localhost/IP bases keep http).
+ * 2. Anthropic-surface mapping — AgentRouter's Claude Code docs advertise the
+ *    bare `https://agentrouter.org` (no /v1) as ANTHROPIC_BASE_URL. If the user
+ *    copied that into Settings as the OpenAI base, remap to the preset's OpenAI
+ *    surface (`.../v1`) so the model list and /chat/completions keep working;
+ *    the Claude passthrough already uses anthropicBaseURL independently.
+ */
+export function resolveBaseURL(config: ProviderConfig): string {
+  const preset = PROVIDERS[config.provider];
+  let base = (config.baseURL ?? preset?.baseURL ?? '').replace(/\/$/, '');
+  if (!base) return '';
+
+  try {
+    const u = new URL(base);
+    const isLocal = u.hostname === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname);
+    if (!isLocal && u.protocol === 'http:') u.protocol = 'https:';
+    base = u.toString().replace(/\/$/, '');
+
+    // Map the Anthropic-surface URL (no /v1) to the OpenAI surface when the
+    // preset defines one.
+    if (preset?.anthropicBaseURL && preset.baseURL && base === preset.anthropicBaseURL) {
+      base = preset.baseURL;
+    }
+  } catch {
+    // Malformed URL — leave as-is; callers guard against bogus bases.
+  }
+
+  return base;
+}
+
 // ─── Main factory ──────────────────────────────────────────────────────────────
 
 export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetch {
   const preset = PROVIDERS[config.provider] ?? {};
-  const baseURL = (config.baseURL ?? preset.baseURL ?? '').replace(/\/$/, '');
-  const anthropicBaseURL = (preset.anthropicBaseURL ?? '').replace(/\/$/, '');
+  const baseURL = resolveBaseURL(config);
+  // Anthropic-native base for the passthrough. When the user overrides baseURL
+  // (e.g. AgentRouter's backup domain), derive the native surface from THEIR
+  // host by stripping the trailing /v1 — otherwise the request would go to the
+  // preset's hardcoded domain while carrying a key issued for the custom one,
+  // which fails auth with a 401.
+  const anthropicBaseURL = preset.anthropicBaseURL
+    ? (config.baseURL
+        ? config.baseURL.replace(/\/$/, '').replace(/\/v1$/, '')
+        : preset.anthropicBaseURL.replace(/\/$/, ''))
+    : '';
   const apiKey = config.apiKey ?? '';
   const defaultModel = config.defaultModel ?? preset.defaultModel ?? 'gpt-4o';
   const modelMap = { ...(preset.modelMap ?? {}), ...(config.modelMap ?? {}) };
@@ -534,7 +609,10 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
     // (ANTHROPIC_AUTH_TOKEN), but the genuine Anthropic /v1/messages surface
     // authenticates via x-api-key. Sending both satisfies whichever the proxy
     // actually enforces; the unused one is ignored.
-    if (anthropicBaseURL && /^claude/i.test(resolvedModel)) {
+    // anthropicNative presets (e.g. the agentrouter "Anthropic endpoint" profile)
+    // send EVERY model through the native surface; otherwise only Claude-family
+    // model IDs are passed through untranslated.
+    if (anthropicBaseURL && (preset.anthropicNative || /^claude/i.test(resolvedModel))) {
       const passBody = { ...ab, model: resolvedModel };
       if (debug) console.log('[openai-compat] → (anthropic passthrough)', { provider: config.provider, model: resolvedModel });
       // Omit auth headers entirely when no key is configured — sending

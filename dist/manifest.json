@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Free",
-  "version": "3.3.4",
+  "version": "3.3.5",
   "description": "Free AI side panel for Chrome — supports any OpenAI-compatible provider (Gemini, DeepSeek, Groq, Ollama…), full browser computer use, stealth Steel browser, and CAPTCHA solving. No Claude subscription needed.",
   "minimum_chrome_version": "116",
   "icons": {
@@ -64,6 +64,6 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.anthropic.com https://gen.pollinations.ai https://generativelanguage.googleapis.com https://api.deepseek.com https://dashscope-intl.aliyuncs.com https://api.minimax.chat https://open.bigmodel.cn https://api.openai.com https://api.groq.com https://api.mistral.ai https://openrouter.ai https://api.fireworks.ai https://agentrouter.org http://localhost:11434 http://localhost:1234; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.anthropic.com https://gen.pollinations.ai https://generativelanguage.googleapis.com https://api.deepseek.com https://dashscope-intl.aliyuncs.com https://api.minimax.chat https://open.bigmodel.cn https://api.openai.com https://api.groq.com https://api.mistral.ai https://openrouter.ai https://api.fireworks.ai https://agentrouter.org https://ps.air-outer.com http://localhost:11434 http://localhost:1234; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
   }
 }

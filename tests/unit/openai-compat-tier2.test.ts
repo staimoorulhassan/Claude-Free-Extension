@@ -167,6 +167,35 @@ describe('createOpenAICompatibleFetch — AgentRouter Anthropic passthrough', ()
     expect(sentBody.stream).toBe(true);
   });
 
+  it('derives the native surface from a custom baseURL (backup domain) instead of the preset host', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(sseFrom([JSON.stringify({ type: 'message_stop' })]), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    // AgentRouter publishes backup domains; a key issued for one is rejected by
+    // the other, so the passthrough must follow the user's configured host.
+    const customFetch = createOpenAICompatibleFetch({
+      ...AGENTROUTER_CONFIG,
+      baseURL: 'https://ps.air-outer.com/v1',
+    });
+    await customFetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'claude-opus-4-7',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      }),
+    });
+
+    const [calledUrl] = mockFetch.mock.calls[0];
+    expect(calledUrl).toBe('https://ps.air-outer.com/v1/messages');
+    expect(calledUrl).not.toContain('agentrouter.org');
+  });
+
   it('omits auth headers entirely when no API key is configured', async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(sseFrom([JSON.stringify({ type: 'message_stop' })]), {
@@ -193,15 +222,17 @@ describe('createOpenAICompatibleFetch — AgentRouter Anthropic passthrough', ()
     expect(requestInit.headers['anthropic-version']).toBe('2023-06-01');
   });
 
-  it('still translates GPT/GLM models through the OpenAI /v1/chat/completions surface', async () => {
+  it('routes non-Claude models through the native /v1/messages surface too (Anthropic endpoint profile)', async () => {
     const mockFetch = vi.fn().mockResolvedValue(
-      new Response(sseFrom([JSON.stringify({ choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] })]), {
+      new Response(sseFrom([JSON.stringify({ type: 'message_stop' })]), {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream' },
       }),
     );
     vi.stubGlobal('fetch', mockFetch);
 
+    // The `agentrouter` preset is the Anthropic-native profile: every model —
+    // including GPT/GLM — is sent untranslated to /v1/messages.
     const customFetch = createOpenAICompatibleFetch({ ...AGENTROUTER_CONFIG, defaultModel: 'gpt-5.6' });
     await customFetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -212,7 +243,72 @@ describe('createOpenAICompatibleFetch — AgentRouter Anthropic passthrough', ()
       }),
     });
 
-    const [calledUrl] = mockFetch.mock.calls[0];
+    const [calledUrl, requestInit] = mockFetch.mock.calls[0];
+    expect(calledUrl).toBe('https://agentrouter.org/v1/messages');
+    const sentBody = JSON.parse(requestInit.body as string);
+    expect(sentBody.model).toBe('gpt-5.6');
+  });
+});
+
+describe('createOpenAICompatibleFetch — AgentRouter OpenAI-compatible endpoint', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const OPENAI_CONFIG: ProviderConfig = {
+    provider: 'agentrouter-openai',
+    apiKey: 'sk-test-agentrouter',
+  };
+
+  it('translates GPT/GLM models through the OpenAI /v1/chat/completions surface', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(sseFrom([JSON.stringify({ choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] })]), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const customFetch = createOpenAICompatibleFetch({ ...OPENAI_CONFIG, defaultModel: 'gpt-5.6' });
+    await customFetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'gpt-5.6',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      }),
+    });
+
+    const [calledUrl, requestInit] = mockFetch.mock.calls[0];
     expect(calledUrl).toBe('https://agentrouter.org/v1/chat/completions');
+    const sentBody = JSON.parse(requestInit.body as string);
+    expect(sentBody.model).toBe('gpt-5.6');
+    expect(sentBody.messages[0].content).toBe('hi');
+  });
+
+  it('remaps Claude model requests to AgentRouter OpenAI models with native tool support', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(sseFrom([JSON.stringify({ choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] })]), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const customFetch = createOpenAICompatibleFetch(OPENAI_CONFIG);
+    await customFetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      }),
+    });
+
+    const [calledUrl, requestInit] = mockFetch.mock.calls[0];
+    expect(calledUrl).toBe('https://agentrouter.org/v1/chat/completions');
+    const sentBody = JSON.parse(requestInit.body as string);
+    // Claude → AgentRouter OpenAI model mapping on this surface.
+    expect(sentBody.model).toBe('glm-5.2');
   });
 });
