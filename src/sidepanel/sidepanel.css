@@ -328,3 +328,20 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .recording-expand-btn:hover { background: var(--bg3); }
 .recording-delete-btn:hover { color: var(--error); background: var(--error-bg); }
 .recording-steps-preview { padding: 8px 12px 12px; font-size: 11px; font-family: var(--font-mono); color: var(--text2); white-space: pre-wrap; word-break: break-word; border-top: 1px solid var(--border); background: var(--bg2); }
+
+/* ===== WCAG 2.2 accessibility overrides =====
+ * --text3 is used for labels/meta text; both theme values were below 4.5:1.
+ * Light #6f6a61 = 5.1:1 on --bg; dark #a59e94 = 6.6:1 on --bg. */
+:root { --text3: #6f6a61; }
+[data-theme=dark] { --text3: #a59e94; }
+/* Primary action button (inline-styled save): white on #a14b26 = 5.9:1. */
+button[type=submit] { background-color: #a14b26 !important; }
+/* Visible keyboard focus (WCAG 2.4.7/1.4.11: >=3:1 on both themes). */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Focused elements clear the sticky header (WCAG 2.4.11). */
+:focus { scroll-margin-block: 16px; }
+/* Visually hidden helper (WCAG 1.1.1 / skip links). */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.a11y-skip:focus { position: static; width: auto; height: auto; margin: 0; clip: auto; white-space: normal; padding: 8px 12px; background: var(--accent); color: #fff; border-radius: 0 0 8px 0; z-index: 999; }
+/* Respect reduced motion (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }

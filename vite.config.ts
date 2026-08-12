@@ -23,6 +23,10 @@ function copyStaticFiles() {
       }
       // theme-init.js: sets data-mode before React mounts (avoids flash of wrong theme)
       if (fs.existsSync('theme-init.js')) fs.copyFileSync('theme-init.js', 'dist/theme-init.js');
+      // a11y.js: WCAG 2.2 runtime accessibility bridge, hard-referenced by the
+      // HTML templates — copied unconditionally so a missing file fails the build
+      // instead of shipping a page that 404s its accessibility script.
+      fs.copyFileSync('a11y.js', 'dist/a11y.js');
       // inject-openai-provider.js: legacy global-fetch adapter (kept for reference;
       // the active extension uses the bundled openai-compat.ts instead)
       if (fs.existsSync('inject-openai-provider.js')) fs.copyFileSync('inject-openai-provider.js', 'dist/inject-openai-provider.js');

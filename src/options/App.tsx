@@ -29,7 +29,7 @@ export function App() {
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24, color: '#c96442' }}>Claude Free — Settings</h1>
 
       <section style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#9b9790', marginBottom: 12 }}>Provider</h2>
+        <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#6f6a61', marginBottom: 12 }}>Provider</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Provider">
             <select value={settings.provider.provider} onChange={e => update({ provider: { ...settings.provider, provider: e.target.value } })}>
@@ -60,7 +60,7 @@ export function App() {
       </section>
 
       <section style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#9b9790', marginBottom: 12 }}>Conversation</h2>
+        <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#6f6a61', marginBottom: 12 }}>Conversation</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="System prompt">
             <textarea
@@ -77,12 +77,12 @@ export function App() {
       </section>
 
       <section style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#9b9790', marginBottom: 12 }}>Features</h2>
+        <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#6f6a61', marginBottom: 12 }}>Features</h2>
         <ToggleRow label="Computer use (browser control)" checked={settings.computerUseEnabled} onChange={v => update({ computerUseEnabled: v })} />
       </section>
 
       <section style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#9b9790', marginBottom: 12 }}>Appearance</h2>
+        <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#6f6a61', marginBottom: 12 }}>Appearance</h2>
         <Field label="Theme">
           <select value={settings.theme} onChange={e => update({ theme: e.target.value as AppSettings['theme'] })}>
             <option value="auto">Auto (system)</option>
