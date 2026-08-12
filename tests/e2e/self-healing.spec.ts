@@ -5,8 +5,8 @@ import { test, expect } from './fixtures';
 // (findDismissRefId in store.ts) should locate and click the overlay's dismiss
 // control, then retry the original click — all without surfacing an error to the user.
 //
-// Requires a real display (launchPersistentContext headless:false) — not runnable in
-// this sandbox; written and ready to run in CI/local dev per quickstart.md.
+// Requires a real display (launchPersistentContext headless:false) — runs locally
+// and in the CI e2e job under xvfb-run.
 
 const FIXTURE_HTML = `
 <!doctype html><html><body>
