@@ -32,6 +32,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify dist has no CRLF line endings
+        # Backstop for the dist-sync guard: any tracked file under dist/ containing
+        # a CR byte is CRLF and cannot have been produced by a clean Linux build
+        # (vite preserves the source's line endings). .gitattributes (eol=lf on
+        # *.html) makes CRLF-in-HTML impossible going forward; this catches any
+        # other slip fast with a clear message instead of the guard's generic one.
+        run: |
+          files="$(git grep --cached -IlF $'\r' -- dist/ || true)"
+          if [ -n "$files" ]; then
+            echo "::error::dist/ contains CR bytes (CRLF line endings) — commit dist/ as LF only."
+            printf '%s\n' "$files" | sed 's/^/  /'
+            exit 1
+          fi
+          echo "dist/ is LF-clean."
+
       - name: Type check
         run: npm run type-check
 
