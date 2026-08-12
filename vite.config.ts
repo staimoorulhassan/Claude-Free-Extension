@@ -8,6 +8,10 @@ function copyStaticFiles() {
     name: 'copy-static-files',
     writeBundle() {
       fs.copyFileSync('manifest.json', 'dist/manifest.json');
+      // dnr-rules.json: declarativeNetRequest rule resource hard-referenced by the
+      // manifest — copied unconditionally (like manifest.json itself) so a missing
+      // file fails the build instead of silently emitting an unloadable extension.
+      fs.copyFileSync('dnr-rules.json', 'dist/dnr-rules.json');
       for (const icon of ['icon-128.png', 'claude_icon.svg']) {
         if (fs.existsSync(icon)) fs.copyFileSync(icon, `dist/${icon}`);
       }
