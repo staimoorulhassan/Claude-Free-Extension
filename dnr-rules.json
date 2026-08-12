@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "user-agent",
+          "operation": "set",
+          "value": "claude-cli/2.1.219 (external, sdk-cli)"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||agentrouter.org",
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  }
+]
