@@ -1,0 +1,6 @@
+# HTML must always be LF. Vite's HTML transform preserves the source file's
+# line endings, so a Windows checkout with core.autocrlf smudges these to CRLF
+# and vite carries that CRLF into dist/ — which then fails the Linux dist-sync
+# CI guard (#18, #22). eol=lf forces LF on checkout AND on staging, making
+# CRLF-in-HTML impossible rather than merely detected.
+*.html text eol=lf
