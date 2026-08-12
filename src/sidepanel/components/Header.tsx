@@ -98,11 +98,14 @@ export function Header() {
     await stopRecording(''); // stop without saving (empty name → store ignores it)
   };
 
+  const recordButtonLabel = isRecording ? 'Stop recording' : 'Record my actions';
+
   if (namingRecording) {
     return (
       <div className="header header--naming">
         <input
           className="recording-name-input"
+          aria-label="Recording name"
           value={recordingName}
           onChange={e => setRecordingName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') handleCancelName(); }}
@@ -118,7 +121,7 @@ export function Header() {
   if (isAuxPanel) {
     return (
       <div className="header">
-        <button className="icon-btn" onClick={() => { setShowSettings(false); setShowHistory(false); setShowRecordings(false); }} title="Back">
+        <button className="icon-btn" onClick={() => { setShowSettings(false); setShowHistory(false); setShowRecordings(false); }} title="Back" aria-label="Back">
           <BackIcon />
         </button>
         <span className="header-title">{title}</span>
@@ -134,21 +137,22 @@ export function Header() {
         <button
           className={`icon-btn ${isRecording ? 'icon-btn--recording' : ''}`}
           onClick={handleRecordToggle}
-          title={isRecording ? 'Stop recording' : 'Record my actions'}
+          title={recordButtonLabel}
+          aria-label={recordButtonLabel}
         >
           <RecordIcon active={isRecording} />
         </button>
       )}
-      <button className="icon-btn" onClick={() => setShowRecordings(true)} title="Recordings">
+      <button className="icon-btn" onClick={() => setShowRecordings(true)} title="Recordings" aria-label="Recordings">
         <RecordingsIcon />
       </button>
-      <button className="icon-btn" onClick={newConversation} title="New conversation">
+      <button className="icon-btn" onClick={newConversation} title="New conversation" aria-label="New conversation">
         <NewIcon />
       </button>
-      <button className="icon-btn" onClick={() => setShowHistory(true)} title="History">
+      <button className="icon-btn" onClick={() => setShowHistory(true)} title="History" aria-label="History">
         <HistoryIcon />
       </button>
-      <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">
+      <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings">
         <SettingsIcon />
       </button>
     </div>

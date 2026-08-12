@@ -35,8 +35,15 @@ export function App() {
     return () => mq.removeEventListener('change', handler);
   }, [settings.theme]);
 
+  const isChatView = !showSettings && !showHistory && !showRecordings;
+
   return (
     <div className="app">
+      {isChatView && (
+        // First element in the DOM so it is the first tab stop (WCAG 2.4.1);
+        // only rendered in the chat view, where its target exists.
+        <a className="visually-hidden a11y-skip" href="#a11y-composer">Skip to message input</a>
+      )}
       <Header />
 
       {showSettings ? (

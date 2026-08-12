@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { cloneElement, useEffect, useId, useState } from 'react';
 import { getSettings, saveSettings } from '@/lib/storage';
 import { PROVIDERS, resolveContextWindow } from '@/lib/openai-compat';
 import type { AppSettings } from '@/lib/types';
@@ -26,12 +26,13 @@ export function App() {
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 24px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', fontSize: 14, color: '#1a1a1a' }}>
+      <a className="visually-hidden a11y-skip" href="#a11y-first-control">Skip to settings</a>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24, color: '#c96442' }}>Claude Free — Settings</h1>
 
       <section style={{ marginBottom: 28 }}>
         <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#6f6a61', marginBottom: 12 }}>Provider</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Provider">
+          <Field label="Provider" controlId="a11y-first-control">
             <select value={settings.provider.provider} onChange={e => update({ provider: { ...settings.provider, provider: e.target.value } })}>
               {PROVIDER_KEYS.map(p => <option key={p} value={p}>{p}</option>)}
               <option value="custom">custom</option>
@@ -102,12 +103,17 @@ export function App() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, controlId }: { label: string; children: React.ReactElement; controlId?: string }) {
+  // Associate the label with the control (WCAG 3.3.2): generate a stable id and
+  // wire label[htmlFor] ↔ control[id]. controlId lets a caller pin a specific id
+  // (used by the skip link's target).
+  const autoId = useId();
+  const id = controlId ?? autoId;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <label style={{ fontSize: 13, color: '#6b6860' }}>{label}</label>
+      <label htmlFor={id} style={{ fontSize: 13, color: '#6b6860' }}>{label}</label>
       <div style={{ display: 'contents' }}>
-        {children}
+        {cloneElement(children, { id })}
       </div>
     </div>
   );
@@ -117,7 +123,7 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <span style={{ fontSize: 13, color: '#6b6860' }}>{label}</span>
-      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#c96442' }} />
+      <input type="checkbox" aria-label={label} checked={checked} onChange={e => onChange(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#c96442' }} />
     </div>
   );
 }

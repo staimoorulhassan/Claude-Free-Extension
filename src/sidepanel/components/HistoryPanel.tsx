@@ -51,6 +51,7 @@ export function HistoryPanel() {
             className="history-del"
             onClick={e => { e.stopPropagation(); deleteConv(conv.id); }}
             title="Delete"
+            aria-label="Delete"
           >
             <TrashIcon />
           </button>

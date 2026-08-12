@@ -141,7 +141,9 @@ export function MessageInput() {
       <div className="input-row">
         <textarea
           ref={textareaRef}
+          id="a11y-composer"
           className="input-textarea"
+          aria-label="Message"
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
@@ -151,15 +153,15 @@ export function MessageInput() {
           disabled={isStreaming}
         />
         <div className="input-actions">
-          <button className="attach-btn" onClick={() => fileInputRef.current?.click()} title="Attach image">
+          <button className="attach-btn" onClick={() => fileInputRef.current?.click()} title="Attach image" aria-label="Attach image">
             <PaperclipIcon />
           </button>
           {isStreaming ? (
-            <button className="send-btn stop-btn" onClick={stopGeneration} title="Stop">
+            <button className="send-btn stop-btn" onClick={stopGeneration} title="Stop" aria-label="Stop">
               <StopIcon />
             </button>
           ) : (
-            <button className="send-btn" onClick={send} disabled={!canSend} title="Send (Enter)">
+            <button className="send-btn" onClick={send} disabled={!canSend} title="Send (Enter)" aria-label="Send (Enter)">
               <SendIcon />
             </button>
           )}
