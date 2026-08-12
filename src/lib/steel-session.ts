@@ -75,7 +75,7 @@ export class SteelSessionManager {
       liveUrl: session.liveUrl,
     };
     try {
-      chrome.storage.local.set({ [SESSION_STORAGE_KEY]: stored });
+      chrome.storage.local.set({ [SESSION_STORAGE_KEY]: stored }).catch(() => {});
     } catch {
       // Ignore storage errors
     }
