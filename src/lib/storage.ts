@@ -18,7 +18,11 @@ export async function getProviderVault(): Promise<ProviderVault> {
 }
 
 export async function saveProviderVault(vault: ProviderVault): Promise<void> {
-  await chrome.storage.local.set({ providerVault: vault });
+  try {
+    await chrome.storage.local.set({ providerVault: vault });
+  } catch (err) {
+    console.warn('[Claude Free] Could not save provider settings (storage error - disk may be full):', err);
+  }
 }
 
 const STALE_POLLINATIONS_MODELS = new Set(['openai', 'gemini-fast', 'mistral', 'gemini']);
@@ -81,7 +85,11 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  await chrome.storage.local.set({ settings });
+  try {
+    await chrome.storage.local.set({ settings });
+  } catch (err) {
+    console.warn('[Claude Free] Could not save settings (storage error - disk may be full):', err);
+  }
 }
 
 export async function getConversations(): Promise<Conversation[]> {
@@ -90,7 +98,11 @@ export async function getConversations(): Promise<Conversation[]> {
 }
 
 export async function saveConversations(conversations: Conversation[]): Promise<void> {
-  await chrome.storage.local.set({ conversations });
+  try {
+    await chrome.storage.local.set({ conversations });
+  } catch (err) {
+    console.warn('[Claude Free] Could not save conversation (storage error - disk may be full):', err);
+  }
 }
 
 export function generateId(): string {

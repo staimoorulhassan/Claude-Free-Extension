@@ -23,7 +23,11 @@ export async function getRecordings(): Promise<Recording[]> {
 }
 
 export async function saveRecordings(recordings: Recording[]): Promise<void> {
-  await chrome.storage.local.set({ recordings });
+  try {
+    await chrome.storage.local.set({ recordings });
+  } catch (err) {
+    console.warn('[Claude Free] Could not save recording (storage error - disk may be full):', err);
+  }
 }
 
 /** Convert a recording into a human-readable block the AI can follow. */
