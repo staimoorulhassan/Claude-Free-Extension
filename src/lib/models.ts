@@ -1,6 +1,9 @@
 import type { ProviderConfig } from './types';
 import { PROVIDERS } from './openai-compat';
 
+/** Fetch seam — injected for unit tests (same pattern as webResearch.ts). */
+export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
+
 export interface ModelList {
   free: string[];
   paid: string[];
@@ -30,7 +33,7 @@ interface ModelsResponse {
   object?: string;
 }
 
-export async function fetchProviderModels(config: ProviderConfig): Promise<ModelList> {
+export async function fetchProviderModels(config: ProviderConfig, fetchFn: FetchFn = fetch): Promise<ModelList> {
   const preset = PROVIDERS[config.provider];
   const base = (config.baseURL || preset?.baseURL || '').replace(/\/$/, '');
   if (!base) return { free: [], paid: [] };
@@ -55,7 +58,7 @@ export async function fetchProviderModels(config: ProviderConfig): Promise<Model
     const headers: Record<string, string> = { 'Accept': 'application/json' };
     if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
 
-    const resp = await fetch(`${base}/models`, { headers, signal: ctrl.signal });
+    const resp = await fetchFn(`${base}/models`, { headers, signal: ctrl.signal });
     if (!resp.ok) return { free: [], paid: [] };
 
     const raw = await resp.json() as ModelsResponse;

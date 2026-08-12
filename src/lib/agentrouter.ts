@@ -1,3 +1,6 @@
+/** Fetch seam — injected for unit tests (same pattern as webResearch.ts). */
+export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
+
 /**
  * AgentRouter (agentrouter.org) — free multi-model AI provider integration.
  *
@@ -44,7 +47,7 @@ export interface AgentRouterQuota {
  * fallback, and always list `/v1/models` so the Settings UI can show which
  * models the key can actually reach. Any probe failing is non-fatal.
  */
-export async function fetchAgentRouterQuota(apiKey: string, timeoutMs = 8000): Promise<AgentRouterQuota> {
+export async function fetchAgentRouterQuota(apiKey: string, timeoutMs = 8000, fetchFn: FetchFn = fetch): Promise<AgentRouterQuota> {
   const result: AgentRouterQuota = { ok: false, modelCount: 0, models: [] };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -53,7 +56,7 @@ export async function fetchAgentRouterQuota(apiKey: string, timeoutMs = 8000): P
   try {
     // 1) Models list (authoritative — proves the key works).
     try {
-      const modelsResp = await fetch(`${AGENTROUTER_OPENAI_BASE}/models`, { headers, signal: ctrl.signal });
+      const modelsResp = await fetchFn(`${AGENTROUTER_OPENAI_BASE}/models`, { headers, signal: ctrl.signal });
       if (modelsResp.ok) {
         const json = (await modelsResp.json()) as { data?: Array<{ id: string }> };
         const ids = (json.data ?? []).map(m => m.id).filter(Boolean);
@@ -71,7 +74,7 @@ export async function fetchAgentRouterQuota(apiKey: string, timeoutMs = 8000): P
     for (const path of ['/v1/dashboard/billing/credit_grants', '/v1/balance', '/v1/dashboard/billing/subscription']) {
       if (result.balance !== undefined) break;
       try {
-        const r = await fetch(`${AGENTROUTER_BASE_URL}${path}`, { headers, signal: ctrl.signal });
+        const r = await fetchFn(`${AGENTROUTER_BASE_URL}${path}`, { headers, signal: ctrl.signal });
         if (!r.ok) continue;
         const data = (await r.json()) as Record<string, unknown>;
         result.rawBalance = data;
@@ -86,9 +89,9 @@ export async function fetchAgentRouterQuota(apiKey: string, timeoutMs = 8000): P
       } catch { /* non-fatal */ }
     }
 
-    if (result.modelCount === 0 && !result.ok && !result.error) {
-      result.error = 'Could not reach AgentRouter with this key.';
-    }
+    // Note: no fallback-error branch here — one keyed on `!ok && !error` would be
+    // unreachable: /models sets ok=true on any 200 (even with zero models), and
+    // every path that leaves ok false also sets error.
     return result;
   } finally {
     clearTimeout(timer);
