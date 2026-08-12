@@ -35,8 +35,26 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      # Unit + spec-conformance suites (vitest + node --test). Pure node
+      # environment — no browser, no display, no network — ~4s, deterministic.
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
+
+      - name: Verify dist is in sync with source
+        # The repo commits built assets (dist/), so a clean source checkout must
+        # rebuild to the committed dist byte-for-byte. This catches a stale dist
+        # (source changed without regenerating dist) at CI time instead of
+        # shipping an artifact that doesn't match the source. Requires a build
+        # from a clean checkout (Linux, autocrlf off — line endings as committed).
+        run: |
+          if [ -n "$(git status --porcelain dist/)" ]; then
+            echo "::error::dist/ is out of sync with source — run npm run build and commit the result."
+            git status --porcelain dist/
+            exit 1
+          fi
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
@@ -62,3 +80,39 @@ jobs:
         with:
           files: claude-free-extension-${{ github.ref_name }}.zip
           fail_on_unmatched_files: true
+
+  # Runs the Playwright e2e suite (tests/e2e — smoke, a11y, tab-grouping,
+  # self-healing, tier2-polyfill, endurance) against the freshly built dist.
+  # The MV3 harness (tests/e2e/fixtures.ts) launches HEADED Chromium, which
+  # needs a virtual display on headless CI runners — hence xvfb-run.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js with caching
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright chromium (with system deps)
+        run: npx playwright install --with-deps chromium
+
+      - name: Build extension (e2e loads dist/)
+        run: npm run build
+
+      - name: Run e2e tests
+        run: xvfb-run --auto-servernum npx playwright test
+
+      - name: Upload e2e artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 7

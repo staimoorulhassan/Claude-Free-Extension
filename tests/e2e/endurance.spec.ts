@@ -14,8 +14,8 @@ import { test, expect } from './fixtures';
 //   3. On SW startup, resumeInProgressTasksOnStartup() scans for in_progress
 //      journals and emits TASK_RESUMED/TASK_ORPHANED.
 //
-// This test verifies (1) and (3) directly. Requires a real display — not runnable in
-// this sandbox; written and ready to run.
+// This test verifies (1) and (3) directly. Requires a real display (headed
+// Chromium via the fixtures) — runs locally and in the CI e2e job under xvfb-run.
 
 test('journal persists across a simulated service-worker restart and is found on next startup scan', async ({ context, extensionId }) => {
   const page = await context.newPage();

@@ -7,8 +7,9 @@ import { test, expect } from './fixtures';
 // This exercises createOpenAICompatibleFetch's Tier-2 branch directly against a
 // local mock OpenAI-compatible server (rather than a real free-tier model, which
 // would make the test flaky/rate-limited) — the mock returns a scripted
-// <tool_call> response so the test is deterministic. Requires a real display and
-// a locally reachable mock server; not runnable in this sandbox.
+// <tool_call> response so the test is deterministic. Requires a real display
+// (headed Chromium via the fixtures) — runs locally and in the CI e2e job under
+// xvfb-run.
 
 test('Tier-2 XML tool-call polyfill executes a tool call with no tag leakage', async ({ page }) => {
   // A minimal mock OpenAI-compatible endpoint: returns a streamed chat-completion

@@ -7,11 +7,19 @@ import { test, expect } from './fixtures';
 // Drives background.ts the same way the sidepanel does in production — via
 // chrome.runtime.sendMessage from an extension-page context (the sidepanel itself),
 // since chrome.tabGroups/chrome.tabs are only available inside extension contexts.
-// Requires a real display — not runnable in this sandbox; written and ready to run.
+// Requires a real display (headed Chromium via the fixtures) — runs locally and
+// in the CI e2e job under xvfb-run.
 
 test('4-tab task creates one labeled group; Terminate Task closes exactly those 4', async ({ context, extensionId }) => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  // The background resolves the tab to drive via getWebTabId(), which excludes
+  // chrome-extension:// pages and throws "No browser tab found" if nothing else
+  // is active. The test browser starts with no web tabs, so seed one — a data:
+  // URL keeps setup off the network (the opened tabs below still use example.com).
+  const seedPage = await context.newPage();
+  await seedPage.goto('data:text/html,<h1>seed web tab</h1>');
 
   const taskId = 'test-task-1';
 
