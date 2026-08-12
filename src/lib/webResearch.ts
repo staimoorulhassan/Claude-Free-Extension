@@ -259,7 +259,7 @@ export async function fetchPageAsText(targetUrl: string, maxChars = 40000, timeo
 
   let title = '';
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (titleMatch) title = stripTags(titleMatch[1]).slice(0, 200);
+  if (titleMatch) title = decodeEntities(stripTags(titleMatch[1])).slice(0, 200);
 
   // Remove script/style/noscript/svg blocks first, then strip remaining tags.
   let text = html
