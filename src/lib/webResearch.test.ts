@@ -193,10 +193,17 @@ describe('fetchPageAsText', () => {
     const page = await fetchPageAsText('https://example.com/page', 40000, 10000, fetchFn);
     expect(page.url).toBe('https://example.com/page');
     expect(page.finalUrl).toBe('https://example.com/page'); // empty resp.url falls back to the input
-    // NB: the title path applies stripTags only — entity decoding is applied to
-    // the page text, not the title — so the raw entity survives verbatim.
-    expect(page.title).toBe('My Page &amp; Title');
+    // Title is entity-decoded (after tag-stripping) like the text path, so the
+    // model never sees literal entities in citations.
+    expect(page.title).toBe('My Page & Title');
     expect(page.text).toBe('Hello world & friends spaced');
+  });
+
+  it('decodes HTML entities in the extracted title', async () => {
+    const html = '<html><head><title>R&amp;D &quot;FAQ&quot;</title></head><body><p>x</p></body></html>';
+    const fetchFn = fakeFetch(() => Promise.resolve(new Response(html, { status: 200 })));
+    const page = await fetchPageAsText('https://example.com/page', 1000, 10000, fetchFn);
+    expect(page.title).toBe('R&D "FAQ"');
   });
 
   it('truncates long text at maxChars with a marker', async () => {
