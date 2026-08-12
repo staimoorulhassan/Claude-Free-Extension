@@ -15,15 +15,20 @@ export interface SearchResult {
   snippet: string;
 }
 
+/** Fetch seam — injected so the research flow is unit-testable without network
+ * access; defaults to the service-worker global fetch (same pattern as
+ * JournalStorage in journal.ts). */
+export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
+
 const MAX_RESULTS = 6;
 const MAX_SNIPPET = 240;
 const TIMEOUT_MS = 8000;
 
-async function fetchWithTimeout(url: string, timeoutMs = TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(url: string, fetchFn: FetchFn, timeoutMs: number): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    return await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
+    return await fetchFn(url, { signal: ctrl.signal, redirect: 'follow' });
   } finally {
     clearTimeout(timer);
   }
@@ -62,10 +67,10 @@ export function normalizeDomain(target: string): string {
  * Text search via DuckDuckGo's HTML endpoint (no key, no JS).
  * Returns up to MAX_RESULTS with stable, non-redirect URLs.
  */
-export async function searchWeb(query: string, maxResults = MAX_RESULTS): Promise<SearchResult[]> {
+export async function searchWeb(query: string, maxResults = MAX_RESULTS, fetchFn: FetchFn = fetch): Promise<SearchResult[]> {
   const q = encodeURIComponent(query);
   const url = `https://html.duckduckgo.com/html/?q=${q}`;
-  const resp = await fetchWithTimeout(url);
+  const resp = await fetchWithTimeout(url, fetchFn, TIMEOUT_MS);
   if (!resp.ok) throw new Error(`Search failed with HTTP ${resp.status}`);
 
   const html = await resp.text();
@@ -107,11 +112,11 @@ export async function searchWeb(query: string, maxResults = MAX_RESULTS): Promis
  * Fetches a domain's /sitemap.xml, extracting the canonical URL list.
  * Returns [] when no sitemap exists (non-fatal).
  */
-export async function fetchSitemapUrls(domain: string, timeoutMs = 5000): Promise<string[]> {
+export async function fetchSitemapUrls(domain: string, timeoutMs = 5000, fetchFn: FetchFn = fetch): Promise<string[]> {
   const host = normalizeDomain(domain);
   if (!host) return [];
   try {
-    const resp = await fetchWithTimeout(`https://${host}/sitemap.xml`, timeoutMs);
+    const resp = await fetchWithTimeout(`https://${host}/sitemap.xml`, fetchFn, timeoutMs);
     if (!resp.ok) return [];
     const text = await resp.text();
     // Parse <loc>…</loc> entries (handles sitemap-index files which simply nest
@@ -141,7 +146,7 @@ export interface DiscoveredSite {
  * One-shot site discovery: homepage + sitemap + robots.txt + top-level nav links.
  * The agent calls this BEFORE navigating so it never guesses deep paths.
  */
-export async function discoverSite(domain: string): Promise<DiscoveredSite> {
+export async function discoverSite(domain: string, fetchFn: FetchFn = fetch): Promise<DiscoveredSite> {
   const host = normalizeDomain(domain);
   if (!host) throw new Error(`Invalid site: "${domain}"`);
   const homepage = `https://${host}/`;
@@ -154,8 +159,8 @@ export async function discoverSite(domain: string): Promise<DiscoveredSite> {
   };
 
   const [sitemapUrls, robotsText] = await Promise.all([
-    fetchSitemapUrls(host),
-    fetchWithTimeout(`https://${host}/robots.txt`, 4000)
+    fetchSitemapUrls(host, 5000, fetchFn),
+    fetchWithTimeout(`https://${host}/robots.txt`, fetchFn, 4000)
       .then(r => (r.ok ? r.text() : ''))
       .catch(() => ''),
   ]);
@@ -170,7 +175,7 @@ export async function discoverSite(domain: string): Promise<DiscoveredSite> {
   // Fetch homepage and harvest top-level <nav> and header anchors — capped,
   // so the returned payload stays small even on huge pages.
   try {
-    const homeResp = await fetchWithTimeout(homepage, 6000);
+    const homeResp = await fetchWithTimeout(homepage, fetchFn, 6000);
     if (homeResp.ok) {
       const html = await homeResp.text();
       const anchors = new Set<string>();
@@ -245,10 +250,10 @@ export interface FetchedPage {
  * page without navigating a tab to it (privacy + no bot-wall triggered).
  * Tags are stripped with regexes; script/style contents are removed first.
  */
-export async function fetchPageAsText(targetUrl: string, maxChars = 40000, timeoutMs = 10000): Promise<FetchedPage> {
+export async function fetchPageAsText(targetUrl: string, maxChars = 40000, timeoutMs = 10000, fetchFn: FetchFn = fetch): Promise<FetchedPage> {
   const raw = targetUrl.trim();
   const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  const resp = await fetchWithTimeout(url, timeoutMs);
+  const resp = await fetchWithTimeout(url, fetchFn, timeoutMs);
   if (!resp.ok) throw new Error(`web_fetch failed with HTTP ${resp.status}`);
   const html = await resp.text();
 
