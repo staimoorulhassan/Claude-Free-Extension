@@ -38,23 +38,30 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   - `npm ci` — install pinned dependencies
   - `npm run build` — Vite build → `dist/`. `dist/` is **committed** and must
     rebuild byte-identically from a clean checkout; the CI dist-sync guard
-    enforces this.
-  - `npm test` — vitest (`src/**` + `tests/unit`) plus `node --test`
-    spec-conformance checks.
+    enforces this. HTML is forced to LF via `.gitattributes` (`*.html eol=lf`)
+    because vite preserves source line endings — Windows autocrlf must never
+    smudge CRLF into the committed artifact.
+  - `npm test` — vitest (`src/**` + `tests/unit`, 103 tests) plus `node --test`
+    spec-conformance checks (52 tests).
   - `npx playwright test` — the e2e suite (`tests/e2e`) loads `dist/` as an
     unpacked MV3 extension (headed Chromium). Locally: `PLAYWRIGHT_CHANNEL`
     optional; in CI it runs under `xvfb-run`.
 - **CI (`.github/workflows/build.yml`):** the `build` job runs type-check →
-  `npm test` → build → **dist-sync guard** → upload/attest; the `e2e` job
-  installs the pinned bundled chromium (`npx playwright install --with-deps
-  chromium`) and runs the full Playwright suite under `xvfb-run`.
+  `npm test` → build → **dist-sync guard** → **CRLF-in-dist check** →
+  upload/attest; the `e2e` job installs the pinned bundled chromium
+  (`npx playwright install --with-deps chromium`) and runs the full Playwright
+  suite under `xvfb-run`. **Every PR is gated on all of:** `npm test`
+  (103 vitest + 52 node), the full e2e suite (8 specs), the dist-sync guard
+  (committed `dist/` must rebuild byte-identically), and the CRLF check
+  (no committed file under `dist/` may contain a CR byte).
 
 ## Version picture
 
 - **Shipped workspace:** v3.3.3 — a compiled, hand-edited bundle with no source
   in this directory. All its hand-edits have been ported into the source repo
   (see below).
-- **`main`:** v3.3.5 — the real source tree, with PRs #13–#18 merged:
+- **`main`:** v3.3.5 — the real source tree, with PRs #13–#23 merged
+  (currently at `f8ba461`):
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
@@ -64,6 +71,11 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 | #16 | a11y suite: runtime patch (`a11y.js`) + WCAG 2.2 CSS overrides + options contrast fix | the workspace's a11y artifacts |
 | #17 | a11y ported declaratively into React; `a11y.js` deleted | runtime patch layer removed from the build |
 | #18 | CI hardening: e2e job, dist-sync guard, `npm test` gate | — |
+| #19 | `CONTEXT.md` — this domain glossary + repository/build/version state | — |
+| #20 | `FetchFn` injection seam + 16 unit tests on `webResearch.ts` (search/sitemap/discover/page-fetch, real abort path) | — |
+| #21 | title entity-decoding fix in `fetchPageAsText` (titles now decode like text/snippets) | — |
+| #22 | `FetchFn` seams + 15 tests on `models.ts`/`agentrouter.ts`; unreachable fallback-error branch removed | — |
+| #23 | `.gitattributes` (`*.html eol=lf`) + CI CRLF-in-dist check | closes the CRLF-in-dist failure class (#18/#22) |
 
 ## Remaining workspace-only delta (open decision)
 
