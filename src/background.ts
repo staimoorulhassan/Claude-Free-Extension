@@ -5,7 +5,7 @@
 
 import { createOrJoinGroup, setGroupState, getGroupId, forgetGroup } from './lib/tabGroups';
 import {
-  newJournal, writeJournal, readJournal,
+  newJournal, writeJournal, readJournal, completeJournal,
   findInProgressJournals, resolveJournalOnStartup,
 } from './lib/journal';
 import {
@@ -1149,11 +1149,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // TAB_GROUP_TERMINATE (explicit user action) is what actually closes tabs.
     if (currentTaskId) setGroupState(currentTaskId, 'done').catch(() => {});
     broadcastToWebTabs({ type: 'HIDE_AGENT_INDICATORS' });
-    if (currentTaskId) {
-      const taskId = currentTaskId;
+    // Fall back to the message's taskId when currentTaskId is null (e.g. the
+    // sidepanel cleared it before this message arrived) so the journal is still
+    // marked completed instead of being left dangling.
+    if (currentTaskId || msg.taskId) {
+      // Guard guarantees at least one is truthy, so this is never undefined here.
+      const taskId = currentTaskId ?? (msg.taskId as string);
       (async () => {
-        const journal = await readJournal(taskId);
-        if (journal) await writeJournal({ ...journal, status: 'completed', pendingAction: null });
+        await completeJournal(taskId);
         await closeOffscreenDocumentIfIdle();
       })().catch(() => {});
     }

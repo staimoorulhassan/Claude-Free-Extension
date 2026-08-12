@@ -54,6 +54,13 @@ export async function readJournal(taskId: string, storage: JournalStorage = chro
   return (result[key] as ExecutionJournal | undefined) ?? null;
 }
 
+/** Marks a task's journal completed (terminal). No-op when no journal exists for
+ * the task — the caller's taskId may reference a task that never journaled. */
+export async function completeJournal(taskId: string, storage: JournalStorage = chromeStorageAdapter()): Promise<void> {
+  const journal = await readJournal(taskId, storage);
+  if (journal) await writeJournal({ ...journal, status: 'completed', pendingAction: null }, storage);
+}
+
 export async function deleteJournal(taskId: string, storage: JournalStorage = chromeStorageAdapter()): Promise<void> {
   await storage.remove(journalKey(taskId));
 }
