@@ -3,3 +3,10 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# Playwright e2e output
+test-results/
+
+# Chrome writes extension verification metadata into dist/ when the e2e harness
+# loads it as an unpacked extension — never part of the shipped build.
+dist/_metadata/

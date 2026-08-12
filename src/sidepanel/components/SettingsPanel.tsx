@@ -71,6 +71,7 @@ function ModelSelector({
             <button
               className="model-refresh-btn"
               title="Refresh model list"
+              aria-label="Refresh model list"
               onClick={() => load(config)}
             >
               <RefreshIcon />
@@ -89,6 +90,7 @@ function ModelSelector({
 
       {hasModels && !custom ? (
         <select
+          aria-label="Model"
           value={current}
           onChange={e => onChange(e.target.value)}
         >
@@ -112,6 +114,7 @@ function ModelSelector({
       ) : (
         <input
           type="text"
+          aria-label="Model"
           value={current}
           onChange={e => onChange(e.target.value)}
           placeholder={
@@ -142,6 +145,7 @@ export function SettingsPanel() {
           <div className="field">
             <label>Provider</label>
             <select
+              aria-label="Provider"
               value={settings.provider.provider}
               onChange={e => set({ provider: { ...settings.provider, provider: e.target.value } })}
             >
@@ -162,6 +166,7 @@ export function SettingsPanel() {
             </div>
             <input
               type="password"
+              aria-label="API Key"
               value={settings.provider.apiKey}
               onChange={e => set({ provider: { ...settings.provider, apiKey: e.target.value } })}
               placeholder={FREE_PROVIDERS.has(settings.provider.provider) ? 'No key needed' : 'Enter API key…'}
@@ -195,6 +200,7 @@ export function SettingsPanel() {
             <label>Base URL (optional override)</label>
             <input
               type="url"
+              aria-label="Base URL (optional override)"
               value={settings.provider.baseURL ?? ''}
               onChange={e => set({ provider: { ...settings.provider, baseURL: e.target.value || undefined } })}
               placeholder={PROVIDERS[settings.provider.provider]?.baseURL ?? 'https://...'}
@@ -214,6 +220,7 @@ export function SettingsPanel() {
           <div className="field">
             <label>System prompt</label>
             <textarea
+              aria-label="System prompt"
               value={settings.systemPrompt}
               onChange={e => set({ systemPrompt: e.target.value })}
               placeholder="Optional instructions prepended to every conversation…"
@@ -223,6 +230,7 @@ export function SettingsPanel() {
             <label>Max tokens: {settings.maxTokens}</label>
             <input
               type="range"
+              aria-label="Max tokens"
               min={256}
               max={32000}
               step={256}
@@ -241,6 +249,7 @@ export function SettingsPanel() {
             <label className="toggle">
               <input
                 type="checkbox"
+                aria-label="Computer use (browser control)"
                 checked={settings.computerUseEnabled}
                 onChange={e => set({ computerUseEnabled: e.target.checked })}
               />
@@ -256,6 +265,7 @@ export function SettingsPanel() {
               <label className="toggle">
                 <input
                   type="checkbox"
+                  aria-label="Ask for approval before each action"
                   checked={settings.requireApproval ?? true}
                   onChange={e => set({ requireApproval: e.target.checked })}
                 />
@@ -269,6 +279,7 @@ export function SettingsPanel() {
             <label className="toggle">
               <input
                 type="checkbox"
+                aria-label="Use Steel stealth browser"
                 checked={settings.useSteel ?? false}
                 onChange={e => set({ useSteel: e.target.checked })}
               />
@@ -281,6 +292,7 @@ export function SettingsPanel() {
                 <label>Steel API Key</label>
                 <input
                   type="password"
+                  aria-label="Steel API Key"
                   value={settings.steel?.apiKey ?? ''}
                   onChange={e => set({ steel: { ...settings.steel, apiKey: e.target.value } })}
                   placeholder="Enter Steel API key…"
@@ -291,6 +303,7 @@ export function SettingsPanel() {
                 <label className="toggle">
                   <input
                     type="checkbox"
+                    aria-label="Auto-solve CAPTCHAs"
                     checked={settings.steel?.solveCaptcha ?? true}
                     onChange={e => set({ steel: { ...settings.steel, solveCaptcha: e.target.checked } })}
                   />
@@ -308,6 +321,7 @@ export function SettingsPanel() {
           <div className="field">
             <label>Theme</label>
             <select
+              aria-label="Theme"
               value={settings.theme}
               onChange={e => set({ theme: e.target.value as 'auto' | 'light' | 'dark' })}
             >

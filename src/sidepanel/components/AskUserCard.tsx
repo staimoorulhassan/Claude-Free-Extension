@@ -41,6 +41,7 @@ export function AskUserCard() {
         <>
           <textarea
             className="approval-correction"
+            aria-label="Your answer"
             placeholder="Type your answer, then submit"
             value={response}
             onChange={e => setResponse(e.target.value)}

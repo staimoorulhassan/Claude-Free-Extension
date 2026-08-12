@@ -49,7 +49,7 @@ export function Chat() {
   }, [messages.length, isStreaming]);
 
   return (
-    <div className="chat">
+    <div className="chat" role="log" aria-live="polite">
       {messages.length === 0 ? (
         <EmptyState />
       ) : (

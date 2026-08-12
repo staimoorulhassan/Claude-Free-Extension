@@ -79,6 +79,7 @@ export function ApprovalCard() {
 
       <textarea
         className="approval-correction"
+        aria-label="Correction"
         placeholder="Optional: type a correction or change of plan, then Approve — or leave blank to proceed as planned"
         value={correction}
         onChange={e => setCorrection(e.target.value)}
