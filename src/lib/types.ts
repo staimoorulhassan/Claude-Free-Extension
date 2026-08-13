@@ -97,6 +97,11 @@ export interface ProviderConfig {
    * pruning in compressForApi (see spec 001-claude-free-extension FR-015). Falls back to the
    * existing message-count heuristic when absent. */
   contextWindow?: number;
+  /** Arbitrary extra headers merged into every request to this provider's
+   * OpenAI-compatible surface (e.g. Opik's Comet-Workspace, OpenRouter's
+   * HTTP-Referer). Values must be plain strings; user-supplied headers win
+   * over the adapter's defaults. */
+  extraHeaders?: Record<string, string>;
 }
 
 // ─── Agent engine types (spec 001-claude-free-extension) ──────────────────────
