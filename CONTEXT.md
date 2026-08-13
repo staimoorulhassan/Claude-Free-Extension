@@ -57,17 +57,19 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 
 ## Version picture
 
-- **Workspace:** v3.3.5 + PRs #13–#27 at `57b91b0` — a byte-identical copy of
+- **Workspace:** v3.3.6 + PRs #13–#30 at `6d6c9d7` — a byte-identical copy of
   the CI-verified committed `dist/` from `E:\claude-free-recon` (all top-level
-  files `cmp`-verified, `assets/` and `sounds/` directory-compared). The old
-  shipped v3.3.3 build (with its hand-edits) is preserved under
-  `dist-3.3.3-backup/` in this directory, recoverable if ever needed. (The
-  workspace predates the 3.3.6 bump — it is the last pre-release build; refresh
-  from the new dist when convenient.)
-- **`main`:** v3.3.6 — the real source tree, with PRs #13–#28 merged
-  (currently at `8588ee4`). **Release v3.3.6 is published as Latest** with
+  files `cmp`-verified, `assets/` and `sounds/` directory-compared). Includes
+  the tabi provider preset (PR #30) in addition to the v3.3.6 release content.
+  Older builds are preserved in this directory, recoverable if ever needed:
+  `dist-3.3.3-backup/` (the shipped v3.3.3 + hand-edits) and
+  `dist-pre-tabi-backup/` (the `57b91b0` copy — also recoverable from repo
+  commit `57b91b0`'s committed dist).
+- **`main`:** v3.3.6 — the real source tree, with PRs #13–#30 merged
+  (currently at `6d6c9d7`). **Release v3.3.6 is published as Latest** with
   `claude-free-extension-v3.3.6.zip` attached (built + attached by CI on the
-  `v3.3.6` tag):
+  `v3.3.6` tag; the tabi provider landed after the release tag and is in the
+  workspace but not in the v3.3.6 zip):
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
@@ -87,6 +89,8 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 | #26 | per-provider `extraHeaders` (validated JSON) enabling the Opik LLM Gateway (`Comet-Workspace` header) + `connect-src` CSP for `www.comet.com` | — |
 | #27 | `CONTEXT.md` refresh — this file, extended through #26 | — |
 | #28 | version bump 3.3.5 → 3.3.6 (manifest + package + rebuilt dist/manifest) → release v3.3.6 published as Latest with dist.zip attached | — |
+| #29 | `CONTEXT.md` refresh — this file, extended through release v3.3.6 | — |
+| #30 | tabi provider preset (`https://tabitoken.com/v1`, claude-opus-4-8 default, Claude-family mapping) + wallet onboarding + `connect-src` CSP for `tabitoken.com` | — |
 
 ## Open decision: the 20% security system prompt
 
