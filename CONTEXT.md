@@ -57,20 +57,20 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 
 ## Version picture
 
-- **Workspace:** v3.3.6 + PRs #13–#30 at `6d6c9d7` — a byte-identical copy of
-  the CI-verified committed `dist/` from `E:\claude-free-recon` (all top-level
-  files `cmp`-verified, `assets/` and `sounds/` directory-compared). Includes
-  the tabi provider preset (PR #30) in addition to the v3.3.6 release content.
-  Older builds are preserved in this directory, recoverable if ever needed:
-  `dist-3.3.3-backup/` (the shipped v3.3.3 + hand-edits) and
+- **Workspace:** v3.3.7 — a byte-identical copy of the CI-verified committed
+  `dist/` from `E:\claude-free-recon` at `f9b1136` (all top-level files
+  `cmp`-verified, `assets/` and `sounds/` directory-compared) — i.e. the same
+  build the v3.3.7 release zip contains, including the tabi provider preset
+  (PR #30). Older builds are preserved in this directory, recoverable if ever
+  needed: `dist-3.3.3-backup/` (the shipped v3.3.3 + hand-edits),
   `dist-pre-tabi-backup/` (the `57b91b0` copy — also recoverable from repo
-  commit `57b91b0`'s committed dist).
-- **`main`:** v3.3.7 — the real source tree, with PRs #13–#32 merged
-  (currently at `6b811ad`). **Release v3.3.7 is published as Latest** with
+  commit `57b91b0`'s committed dist), and `dist-pre-3.3.7-backup/` (the
+  `6d6c9d7` copy).
+- **`main`:** v3.3.7 — the real source tree, with PRs #13–#33 merged
+  (currently at `f9b1136`). **Release v3.3.7 is published as Latest** with
   `claude-free-extension-v3.3.7.zip` attached (built + attached by CI on the
   `v3.3.7` tag), containing the tabi provider (PR #30) that the v3.3.6 release
-  missed. The workspace line above still describes the `6d6c9d7` build — it
-  predates the 3.3.7 bump; refresh from the new dist when convenient:
+  missed. The workspace above is byte-identical to this build:
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
