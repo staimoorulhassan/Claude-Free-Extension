@@ -5,7 +5,8 @@
 
 import { createOrJoinGroup, setGroupState, getGroupId, forgetGroup } from './lib/tabGroups';
 import {
-  newJournal, writeJournal, readJournal, completeJournal,
+  newJournal, writeJournal, readJournal, completeJournal, abortJournal,
+  addTaskTab, removeTaskTab, getTaskTabs,
   findInProgressJournals, resolveJournalOnStartup,
 } from './lib/journal';
 import {
@@ -87,13 +88,19 @@ async function resumeInProgressTasksOnStartup(): Promise<void> {
 }
 
 async function verifyJournalTabExists(journal: ExecutionJournal): Promise<boolean> {
-  if (journal.activeTabId === null) return true;
-  try {
-    await chrome.tabs.get(journal.activeTabId);
-    return true;
-  } catch {
-    return false;
+  // Verify against the persisted opened-tab set — the durable owner of tab
+  // assignments. At least one tab must still exist for the task to be resumable.
+  // activeTabId is hard-nulled by the store's round snapshot, so it was never a
+  // real verification target. No persisted tabs = nothing to verify = resume.
+  const tabIds = journal.openedTabIds ?? [];
+  if (tabIds.length === 0) return true;
+  for (const id of tabIds) {
+    try {
+      await chrome.tabs.get(id);
+      return true;
+    } catch { /* keep looking */ }
   }
+  return false;
 }
 
 resumeInProgressTasksOnStartup().catch(() => {});
@@ -259,6 +266,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   consoleErrorsByTab.delete(tabId);
   networkErrorsByTab.delete(tabId);
   currentTaskOpenedTabs.delete(tabId);
+  // Mirror the removal into the persisted set (no-op unless this task owned it).
+  if (currentTaskId) removeTaskTab(currentTaskId, tabId).catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -1019,6 +1028,8 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
         const wasFirstTab = currentTaskOpenedTabs.size === 1; // the one already there before this add
         const priorFirstTabId = wasFirstTab ? [...currentTaskOpenedTabs][0] : undefined;
         currentTaskOpenedTabs.add(newTab.id);
+        // Durable mirror of the in-session Set (survives service-worker restarts).
+        if (currentTaskId) addTaskTab(currentTaskId, newTab.id).catch(() => {});
 
         let groupId: number | undefined;
         if (currentTaskId && currentTaskOpenedTabs.size > 1) {
@@ -1172,15 +1183,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // T028: close exactly the tabs this task opened, leave everything else untouched.
     (async () => {
       const taskId = (msg.taskId as string | undefined) ?? currentTaskId;
-      const tabIds = [...currentTaskOpenedTabs];
+      // The persisted opened-tab set is the durable owner (survives SW restarts);
+      // union with the in-session cache so a fresh session still closes exactly
+      // the tabs this task opened.
+      const persistedTabIds = taskId ? await getTaskTabs(taskId) : [];
+      const tabIds = [...new Set([...currentTaskOpenedTabs, ...persistedTabIds])];
+      // Terminal-write first: abortJournal before the close loop makes 'aborted'
+      // the durable status even if a concurrent AGENT_STOPPED (completeJournal)
+      // or the onRemoved tab mirrors land during the loop — a terminal status is
+      // final, so those later writes become no-ops instead of flipping the
+      // journal back to completed/in_progress.
+      if (taskId) await abortJournal(taskId);
       for (const id of tabIds) {
         try { await chrome.tabs.remove(id); } catch { /* already gone */ }
         currentTaskOpenedTabs.delete(id);
       }
       if (taskId) {
         forgetGroup(taskId);
-        const journal = await readJournal(taskId);
-        if (journal) await writeJournal({ ...journal, status: 'aborted', pendingAction: null });
         await closeOffscreenDocumentIfIdle();
       }
       sendResponse({ ok: true, closedTabIds: tabIds });
@@ -1195,7 +1214,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // on disk if it gets torn down and restarted mid-task.
     (async () => {
       const snapshot = msg.journal as ExecutionJournal | undefined;
-      if (snapshot) await writeJournal(snapshot);
+      if (snapshot) {
+        // The sidepanel's round snapshot doesn't know the task's opened-tab set —
+        // preserve the persisted one so tab ownership survives round writes.
+        const merged = snapshot.openedTabIds === undefined
+          ? { ...snapshot, openedTabIds: (await readJournal(snapshot.taskId))?.openedTabIds ?? [] }
+          : snapshot;
+        await writeJournal(merged);
+      }
       sendResponse({ ok: true });
     })();
     return true;

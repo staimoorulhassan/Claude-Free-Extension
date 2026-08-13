@@ -73,17 +73,21 @@ describe('journal', () => {
     expect(found[0].taskId).toBe('task-1');
   });
 
-  it('resolveJournalOnStartup resumes when the tab still exists', async () => {
+  // Verification targets the persisted opened-tab set (the durable owner of tab
+  // assignments) — activeTabId is hard-nulled by the store's round snapshot, so
+  // it was never a real verification target.
+
+  it('resolveJournalOnStartup resumes when a persisted tab still exists', async () => {
     const storage = createMockStorage();
-    const j = { ...newJournal('task-1'), activeTabId: 42 };
+    const j = { ...newJournal('task-1'), openedTabIds: [42] };
     const { journal, resumed } = await resolveJournalOnStartup(j, async () => true, storage);
     expect(resumed).toBe(true);
     expect(journal.status).toBe('in_progress');
   });
 
-  it('resolveJournalOnStartup marks orphaned and persists it when the tab is gone', async () => {
+  it('resolveJournalOnStartup marks orphaned and persists it when every persisted tab is gone', async () => {
     const storage = createMockStorage();
-    const j = { ...newJournal('task-1'), activeTabId: 42 };
+    const j = { ...newJournal('task-1'), openedTabIds: [42] };
     const { journal, resumed } = await resolveJournalOnStartup(j, async () => false, storage);
     expect(resumed).toBe(false);
     expect(journal.status).toBe('orphaned');
@@ -92,10 +96,10 @@ describe('journal', () => {
     expect(persisted?.status).toBe('orphaned');
   });
 
-  it('resolveJournalOnStartup resumes without checking when there is no active tab', async () => {
+  it('resolveJournalOnStartup resumes without checking when no tabs were persisted', async () => {
     const storage = createMockStorage();
     const verify = vi.fn().mockResolvedValue(false);
-    const j = newJournal('task-1'); // activeTabId: null
+    const j = newJournal('task-1'); // openedTabIds: []
     const { resumed } = await resolveJournalOnStartup(j, verify, storage);
     expect(resumed).toBe(true);
     expect(verify).not.toHaveBeenCalled();
