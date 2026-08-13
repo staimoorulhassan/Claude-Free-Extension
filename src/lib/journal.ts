@@ -34,6 +34,7 @@ export function newJournal(taskId: string): ExecutionJournal {
     conversationHistory: [],
     activeTabId: null,
     activeGroupId: null,
+    openedTabIds: [],
     pendingAction: null,
     status: 'in_progress',
     createdAt: now,
@@ -55,14 +56,61 @@ export async function readJournal(taskId: string, storage: JournalStorage = chro
 }
 
 /** Marks a task's journal completed (terminal). No-op when no journal exists for
- * the task — the caller's taskId may reference a task that never journaled. */
+ * the task — the caller's taskId may reference a task that never journaled — and
+ * a terminal status is never overwritten: completed/aborted/orphaned are final,
+ * so a late AGENT_STOPPED can't flip an aborted task back to completed. */
 export async function completeJournal(taskId: string, storage: JournalStorage = chromeStorageAdapter()): Promise<void> {
   const journal = await readJournal(taskId, storage);
-  if (journal) await writeJournal({ ...journal, status: 'completed', pendingAction: null }, storage);
+  if (journal && !isTerminal(journal.status)) await writeJournal({ ...journal, status: 'completed', pendingAction: null }, storage);
+}
+
+/** Marks a task's journal aborted (terminal) — the durable twin of completeJournal,
+ * used by TAB_GROUP_TERMINATE. Same no-op and terminal-guard rules. */
+export async function abortJournal(taskId: string, storage: JournalStorage = chromeStorageAdapter()): Promise<void> {
+  const journal = await readJournal(taskId, storage);
+  if (journal && !isTerminal(journal.status)) await writeJournal({ ...journal, status: 'aborted', pendingAction: null }, storage);
+}
+
+function isTerminal(status: ExecutionJournal['status']): boolean {
+  return status === 'completed' || status === 'aborted' || status === 'orphaned';
 }
 
 export async function deleteJournal(taskId: string, storage: JournalStorage = chromeStorageAdapter()): Promise<void> {
   await storage.remove(journalKey(taskId));
+}
+
+/** Adds a tab to the task's persisted opened-tab set — the durable mirror of
+ * background.ts's in-session Set, so TAB_GROUP_TERMINATE can still close the
+ * task's tabs after a service-worker restart wiped the in-memory Set. No-op when
+ * no journal exists, when the tab is already present, or when the journal is
+ * already terminal (terminal statuses are final — a late mirror must never
+ * resurrect one). */
+export async function addTaskTab(taskId: string, tabId: number, storage: JournalStorage = chromeStorageAdapter()): Promise<void> {
+  const journal = await readJournal(taskId, storage);
+  if (!journal || isTerminal(journal.status)) return;
+  const openedTabIds = journal.openedTabIds ?? [];
+  if (openedTabIds.includes(tabId)) return;
+  await writeJournal({ ...journal, openedTabIds: [...openedTabIds, tabId] }, storage);
+}
+
+/** Removes a tab from the task's persisted opened-tab set (fires from
+ * chrome.tabs.onRemoved, which sees every tab close — a tab not in the set is a
+ * no-op, so tabs the task didn't open never cause a write). No-op on terminal
+ * journals for the same reason as addTaskTab: the mirror must never overwrite
+ * the terminal status with a stale in_progress read. */
+export async function removeTaskTab(taskId: string, tabId: number, storage: JournalStorage = chromeStorageAdapter()): Promise<void> {
+  const journal = await readJournal(taskId, storage);
+  if (!journal || isTerminal(journal.status)) return;
+  const openedTabIds = (journal.openedTabIds ?? []).filter(id => id !== tabId);
+  if (openedTabIds.length === (journal.openedTabIds ?? []).length) return;
+  await writeJournal({ ...journal, openedTabIds }, storage);
+}
+
+/** The task's persisted opened-tab set — what a service-worker restart needs to
+ * recover tab ownership (terminate-after-restart, orphan verification). */
+export async function getTaskTabs(taskId: string, storage: JournalStorage = chromeStorageAdapter()): Promise<number[]> {
+  const journal = await readJournal(taskId, storage);
+  return journal?.openedTabIds ?? [];
 }
 
 /** All journals currently marked in_progress — what a service-worker restart needs
@@ -79,9 +127,11 @@ export async function findInProgressJournals(storage: JournalStorage = chromeSto
 export type ResumeVerifier = (journal: ExecutionJournal) => Promise<boolean>;
 
 /**
- * Resume-on-init flow (research.md §5): verify the journaled tab/group still exist
- * before resuming; mark orphaned (terminal) rather than silently resuming against
- * a tab that's gone, or silently dropping the task.
+ * Resume-on-init flow (research.md §5): verify the journaled opened tabs still
+ * exist before resuming; mark orphaned (terminal) rather than silently resuming
+ * against a working set that's gone, or silently dropping the task. Verification
+ * targets the persisted opened-tab set — activeTabId is hard-nulled by the store's
+ * round snapshot, so it was never a real verification target.
  */
 export async function resolveJournalOnStartup(
   journal: ExecutionJournal,
@@ -90,7 +140,7 @@ export async function resolveJournalOnStartup(
 ): Promise<{ journal: ExecutionJournal; resumed: boolean }> {
   if (journal.status !== 'in_progress') return { journal, resumed: false };
 
-  const tabExists = journal.activeTabId === null || (await verifyTabExists(journal));
+  const tabExists = (journal.openedTabIds ?? []).length === 0 || (await verifyTabExists(journal));
   if (!tabExists) {
     const orphaned: ExecutionJournal = { ...journal, status: 'orphaned', pendingAction: null, updatedAt: Date.now() };
     await writeJournal(orphaned, storage);

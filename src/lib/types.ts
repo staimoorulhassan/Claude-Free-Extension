@@ -112,6 +112,11 @@ export interface ExecutionJournal {
   conversationHistory: AnthropicMessage[];
   activeTabId: number | null;
   activeGroupId: number | null;
+  /** The tab ids this task opened via manage_tabs('open'), persisted so tab
+   * ownership survives service-worker restarts (journal.ts addTaskTab/removeTaskTab).
+   * Optional because the sidepanel's round snapshot doesn't know the set —
+   * background.ts preserves the persisted value when writing such snapshots. */
+  openedTabIds?: number[];
   pendingAction: ToolCallEnvelope | null;
   status: 'in_progress' | 'orphaned' | 'completed' | 'aborted';
   createdAt: number;
