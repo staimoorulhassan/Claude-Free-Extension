@@ -41,7 +41,7 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
     enforces this. HTML is forced to LF via `.gitattributes` (`*.html eol=lf`)
     because vite preserves source line endings — Windows autocrlf must never
     smudge CRLF into the committed artifact.
-  - `npm test` — vitest (`src/**` + `tests/unit`, 126 tests) plus `node --test`
+  - `npm test` — vitest (`src/**` + `tests/unit`, 127 tests) plus `node --test`
     spec-conformance checks (52 tests).
   - `npx playwright test` — the e2e suite (`tests/e2e`) loads `dist/` as an
     unpacked MV3 extension (headed Chromium). Locally: `PLAYWRIGHT_CHANNEL`
@@ -51,7 +51,7 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   upload/attest; the `e2e` job installs the pinned bundled chromium
   (`npx playwright install --with-deps chromium`) and runs the full Playwright
   suite under `xvfb-run`. **Every PR is gated on all of:** `npm test`
-  (126 vitest + 52 node), the full e2e suite (8 specs), the dist-sync guard
+  (127 vitest + 52 node), the full e2e suite (8 specs), the dist-sync guard
   (committed `dist/` must rebuild byte-identically), and the CRLF check
   (no committed file under `dist/` may contain a CR byte).
 
@@ -65,11 +65,12 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   `dist-3.3.3-backup/` (the shipped v3.3.3 + hand-edits) and
   `dist-pre-tabi-backup/` (the `57b91b0` copy — also recoverable from repo
   commit `57b91b0`'s committed dist).
-- **`main`:** v3.3.6 — the real source tree, with PRs #13–#30 merged
-  (currently at `6d6c9d7`). **Release v3.3.6 is published as Latest** with
-  `claude-free-extension-v3.3.6.zip` attached (built + attached by CI on the
-  `v3.3.6` tag; the tabi provider landed after the release tag and is in the
-  workspace but not in the v3.3.6 zip):
+- **`main`:** v3.3.7 — the real source tree, with PRs #13–#32 merged
+  (currently at `6b811ad`). **Release v3.3.7 is published as Latest** with
+  `claude-free-extension-v3.3.7.zip` attached (built + attached by CI on the
+  `v3.3.7` tag), containing the tabi provider (PR #30) that the v3.3.6 release
+  missed. The workspace line above still describes the `6d6c9d7` build — it
+  predates the 3.3.7 bump; refresh from the new dist when convenient:
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
@@ -91,6 +92,8 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 | #28 | version bump 3.3.5 → 3.3.6 (manifest + package + rebuilt dist/manifest) → release v3.3.6 published as Latest with dist.zip attached | — |
 | #29 | `CONTEXT.md` refresh — this file, extended through release v3.3.6 | — |
 | #30 | tabi provider preset (`https://tabitoken.com/v1`, claude-opus-4-8 default, Claude-family mapping) + wallet onboarding + `connect-src` CSP for `tabitoken.com` | — |
+| #31 | `CONTEXT.md` refresh — this file, extended through PR #30 | — |
+| #32 | version bump 3.3.6 → 3.3.7 (manifest + package + rebuilt dist/manifest) → release v3.3.7 published as Latest with dist.zip attached (absorbs the tabi provider) | — |
 
 ## Open decision: the 20% security system prompt
 
