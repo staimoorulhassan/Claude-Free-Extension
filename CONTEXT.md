@@ -41,7 +41,7 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
     enforces this. HTML is forced to LF via `.gitattributes` (`*.html eol=lf`)
     because vite preserves source line endings — Windows autocrlf must never
     smudge CRLF into the committed artifact.
-  - `npm test` — vitest (`src/**` + `tests/unit`, 103 tests) plus `node --test`
+  - `npm test` — vitest (`src/**` + `tests/unit`, 126 tests) plus `node --test`
     spec-conformance checks (52 tests).
   - `npx playwright test` — the e2e suite (`tests/e2e`) loads `dist/` as an
     unpacked MV3 extension (headed Chromium). Locally: `PLAYWRIGHT_CHANNEL`
@@ -51,7 +51,7 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   upload/attest; the `e2e` job installs the pinned bundled chromium
   (`npx playwright install --with-deps chromium`) and runs the full Playwright
   suite under `xvfb-run`. **Every PR is gated on all of:** `npm test`
-  (103 vitest + 52 node), the full e2e suite (8 specs), the dist-sync guard
+  (126 vitest + 52 node), the full e2e suite (8 specs), the dist-sync guard
   (committed `dist/` must rebuild byte-identically), and the CRLF check
   (no committed file under `dist/` may contain a CR byte).
 
@@ -60,8 +60,8 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 - **Shipped workspace:** v3.3.3 — a compiled, hand-edited bundle with no source
   in this directory. All its hand-edits have been ported into the source repo
   (see below).
-- **`main`:** v3.3.5 — the real source tree, with PRs #13–#23 merged
-  (currently at `f8ba461`):
+- **`main`:** v3.3.5 — the real source tree, with PRs #13–#26 merged
+  (currently at `c60132a`):
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
@@ -76,6 +76,9 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 | #21 | title entity-decoding fix in `fetchPageAsText` (titles now decode like text/snippets) | — |
 | #22 | `FetchFn` seams + 15 tests on `models.ts`/`agentrouter.ts`; unreachable fallback-error branch removed | — |
 | #23 | `.gitattributes` (`*.html eol=lf`) + CI CRLF-in-dist check | closes the CRLF-in-dist failure class (#18/#22) |
+| #24 | `CONTEXT.md` refresh — this file, extended through #23 | — |
+| #25 | journal-owned tab assignments (`openedTabIds` persisted via the injected seam; terminate unions cache + persisted set so terminate-after-restart closes the right tabs; orphan verification checks the persisted set) + terminal-state lifecycle (`abortJournal`, shared `isTerminal` guard) | — |
+| #26 | per-provider `extraHeaders` (validated JSON) enabling the Opik LLM Gateway (`Comet-Workspace` header) + `connect-src` CSP for `www.comet.com` | — |
 
 ## Remaining workspace-only delta (open decision)
 
