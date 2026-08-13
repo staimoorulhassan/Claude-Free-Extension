@@ -57,11 +57,17 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 
 ## Version picture
 
-- **Shipped workspace:** v3.3.3 — a compiled, hand-edited bundle with no source
-  in this directory. All its hand-edits have been ported into the source repo
-  (see below).
-- **`main`:** v3.3.5 — the real source tree, with PRs #13–#26 merged
-  (currently at `c60132a`):
+- **Workspace:** v3.3.5 + PRs #13–#27 at `57b91b0` — a byte-identical copy of
+  the CI-verified committed `dist/` from `E:\claude-free-recon` (all top-level
+  files `cmp`-verified, `assets/` and `sounds/` directory-compared). The old
+  shipped v3.3.3 build (with its hand-edits) is preserved under
+  `dist-3.3.3-backup/` in this directory, recoverable if ever needed. (The
+  workspace predates the 3.3.6 bump — it is the last pre-release build; refresh
+  from the new dist when convenient.)
+- **`main`:** v3.3.6 — the real source tree, with PRs #13–#28 merged
+  (currently at `8588ee4`). **Release v3.3.6 is published as Latest** with
+  `claude-free-extension-v3.3.6.zip` attached (built + attached by CI on the
+  `v3.3.6` tag):
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
@@ -79,15 +85,22 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 | #24 | `CONTEXT.md` refresh — this file, extended through #23 | — |
 | #25 | journal-owned tab assignments (`openedTabIds` persisted via the injected seam; terminate unions cache + persisted set so terminate-after-restart closes the right tabs; orphan verification checks the persisted set) + terminal-state lifecycle (`abortJournal`, shared `isTerminal` guard) | — |
 | #26 | per-provider `extraHeaders` (validated JSON) enabling the Opik LLM Gateway (`Comet-Workspace` header) + `connect-src` CSP for `www.comet.com` | — |
+| #27 | `CONTEXT.md` refresh — this file, extended through #26 | — |
+| #28 | version bump 3.3.5 → 3.3.6 (manifest + package + rebuilt dist/manifest) → release v3.3.6 published as Latest with dist.zip attached | — |
 
-## Remaining workspace-only delta (open decision)
+## Open decision: the 20% security system prompt
 
-The **20% security system prompt**: the shipped 3.3.3 bundle carries a non-empty
-default system prompt ("You are a browser automation agent … FULL, REAL control
-of the user's browser", plus research guidance) — a hand-reduced version of a
-longer security preamble. The source default
-(`DEFAULT_SETTINGS.systemPrompt` in `src/lib/types.ts`) is empty.
+The shipped v3.3.3 bundle once carried a non-empty default system prompt
+("You are a browser automation agent … FULL, REAL control of the user's
+browser", plus research guidance) — a hand-reduced version of a longer security
+preamble. The source default (`DEFAULT_SETTINGS.systemPrompt` in
+`src/lib/types.ts`) is empty.
 
-Porting it is **pending the user's decision**: committing it bakes that reduced
-prompt into every build. Until decided, the source intentionally diverges from
-the workspace here — this is the one remaining workspace-only delta.
+With the workspace now running the current source build, there is **no longer a
+workspace-only delta** — both sides carry the empty default. Whether to port the
+20% prompt back into source is still **pending the owner's decision**: committing
+it would bake that reduced prompt into every build.
+
+(Historical note: the old shipped `a11y.js` runtime patch and its stale
+references were removed from the workspace with this rebuild — that work was
+already ported declaratively into React in PR #17.)
