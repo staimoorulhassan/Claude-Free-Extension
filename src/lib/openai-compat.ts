@@ -250,6 +250,34 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
   },
 };
 
+/**
+ * Parses a user-typed JSON object of extra HTTP headers (from the settings
+ * "Extra headers" field). Accepts only an object with plain-string values and
+ * returns a clear error message otherwise, so the UI can surface the problem
+ * without ever sending malformed headers.
+ */
+export function parseExtraHeaders(text: string): { headers: Record<string, string>; error?: string } {
+  const trimmed = text.trim();
+  if (!trimmed) return { headers: {} };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { headers: {}, error: 'Extra headers must be valid JSON, e.g. {"Comet-Workspace":"my-workspace"}' };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { headers: {}, error: 'Extra headers must be a JSON object of string values' };
+  }
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof v !== 'string') {
+      return { headers: {}, error: `Header "${k}" must have a string value` };
+    }
+    headers[k] = v;
+  }
+  return { headers };
+}
+
 // ─── Format translators — Anthropic → OpenAI ──────────────────────────────────
 
 interface OAIContentPart {
@@ -578,6 +606,7 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
   const supportsVision = config.supportsVision ?? preset.supportsVision ?? true;
   const supportsTools = config.supportsTools ?? preset.supportsTools ?? true;
   const debug = config.debug ?? false;
+  const extraHeaders = config.extraHeaders ?? {};
 
   if (!baseURL) throw new Error('[openai-compat] No baseURL configured.');
 
@@ -626,6 +655,7 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
         headers: {
           'Content-Type': 'application/json',
           ...authHeaders,
+          ...extraHeaders,
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true',
         },
@@ -677,7 +707,7 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
 
     const resp = await fetch(`${baseURL}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}`, ...extraHeaders },
       body: JSON.stringify(oaiBody),
       signal: init?.signal ?? undefined,
     });

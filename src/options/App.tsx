@@ -1,6 +1,6 @@
 import { cloneElement, useEffect, useId, useState } from 'react';
 import { getSettings, saveSettings } from '@/lib/storage';
-import { PROVIDERS, resolveContextWindow } from '@/lib/openai-compat';
+import { PROVIDERS, resolveContextWindow, parseExtraHeaders } from '@/lib/openai-compat';
 import type { AppSettings } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
 
@@ -9,10 +9,26 @@ const PROVIDER_KEYS = Object.keys(PROVIDERS);
 export function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
+  const [headersText, setHeadersText] = useState('');
+  const [headersError, setHeadersError] = useState('');
 
   useEffect(() => {
-    getSettings().then(setSettings);
+    getSettings().then(s => {
+      setSettings(s);
+      setHeadersText(s.provider.extraHeaders ? JSON.stringify(s.provider.extraHeaders) : '');
+    });
   }, []);
+
+  const onHeadersChange = (text: string) => {
+    setHeadersText(text);
+    const { headers, error } = parseExtraHeaders(text);
+    if (error) {
+      setHeadersError(error);
+    } else {
+      setHeadersError('');
+      update({ provider: { ...settings.provider, extraHeaders: Object.keys(headers).length ? headers : undefined } });
+    }
+  };
 
   const update = (patch: Partial<AppSettings>) => {
     setSettings(s => ({ ...s, ...patch, provider: { ...s.provider, ...(patch.provider ?? {}) } }));
@@ -44,6 +60,15 @@ export function App() {
           <Field label="Base URL (optional)">
             <input type="url" value={settings.provider.baseURL ?? ''} onChange={e => update({ provider: { ...settings.provider, baseURL: e.target.value || undefined } })} placeholder={PROVIDERS[settings.provider.provider]?.baseURL ?? 'https://...'} />
           </Field>
+          <Field label="Extra headers (JSON)">
+            <input
+              type="text"
+              value={headersText}
+              onChange={e => onHeadersChange(e.target.value)}
+              placeholder='{"Comet-Workspace":"my-workspace"}'
+            />
+          </Field>
+          {headersError && <span style={{ color: '#c96442', fontSize: 12 }}>{headersError}</span>}
           <Field label="Default model">
             <input type="text" value={settings.provider.defaultModel ?? ''} onChange={e => update({ provider: { ...settings.provider, defaultModel: e.target.value || undefined } })} placeholder={PROVIDERS[settings.provider.provider]?.defaultModel ?? 'model name'} />
           </Field>

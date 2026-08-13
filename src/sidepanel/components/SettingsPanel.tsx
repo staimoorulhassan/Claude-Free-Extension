@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store';
-import { PROVIDERS } from '@/lib/openai-compat';
+import { PROVIDERS, parseExtraHeaders } from '@/lib/openai-compat';
 import {
   AGENTROUTER_NAME,
   AGENTROUTER_REGISTER_URL,
@@ -133,6 +133,24 @@ export function SettingsPanel() {
 
   const set = (patch: Parameters<typeof updateSettings>[0]) => updateSettings(patch);
 
+  // Extra-headers field: keep the raw text local (so JSON stays un-reformatted
+  // while typing) and only push parsed headers into the provider config when
+  // the text is valid JSON of string values.
+  const [headersText, setHeadersText] = useState(() =>
+    settings.provider.extraHeaders ? JSON.stringify(settings.provider.extraHeaders) : ''
+  );
+  const [headersError, setHeadersError] = useState('');
+  const onHeadersChange = (text: string) => {
+    setHeadersText(text);
+    const { headers, error } = parseExtraHeaders(text);
+    if (error) {
+      setHeadersError(error);
+    } else {
+      setHeadersError('');
+      set({ provider: { ...settings.provider, extraHeaders: Object.keys(headers).length ? headers : undefined } });
+    }
+  };
+
   const FREE_PROVIDERS = new Set(['pollinations', 'ollama', 'lmstudio']);
   const hasSavedKey = (p: string) => FREE_PROVIDERS.has(p) || !!(providerVault[p]?.apiKey);
   const currentHasKey = !!settings.provider.apiKey || FREE_PROVIDERS.has(settings.provider.provider);
@@ -205,6 +223,18 @@ export function SettingsPanel() {
               onChange={e => set({ provider: { ...settings.provider, baseURL: e.target.value || undefined } })}
               placeholder={PROVIDERS[settings.provider.provider]?.baseURL ?? 'https://...'}
             />
+          </div>
+
+          <div className="field">
+            <label>Extra headers (JSON)</label>
+            <input
+              type="text"
+              aria-label="Extra headers (JSON)"
+              value={headersText}
+              onChange={e => onHeadersChange(e.target.value)}
+              placeholder='{"Comet-Workspace":"my-workspace"}'
+            />
+            {headersError && <span style={{ color: 'var(--error)', fontSize: 11 }}>{headersError}</span>}
           </div>
 
           <ModelSelector
