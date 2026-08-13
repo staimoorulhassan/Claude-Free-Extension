@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store';
-import { PROVIDERS, parseExtraHeaders } from '@/lib/openai-compat';
+import { PROVIDERS, parseExtraHeaders, TABI_NAME, TABI_WALLET_URL } from '@/lib/openai-compat';
 import {
   AGENTROUTER_NAME,
   AGENTROUTER_REGISTER_URL,
@@ -209,6 +209,23 @@ export function SettingsPanel() {
                   onClick={() => chrome.tabs.create({ url: AGENTROUTER_CONSOLE_URL })}
                 >
                   Get API key
+                </button>
+              </div>
+            </div>
+          )}
+
+          {settings.provider.provider === TABI_NAME && !settings.provider.apiKey && (
+            <div className="field provider-onboarding">
+              <span>
+                Tabi Router serves Claude models directly. Open the wallet to create
+                an account and get your API key, then paste it above.
+              </span>
+              <div className="provider-onboarding-actions">
+                <button
+                  type="button"
+                  onClick={() => chrome.tabs.create({ url: TABI_WALLET_URL })}
+                >
+                  Open Tabi wallet
                 </button>
               </div>
             </div>

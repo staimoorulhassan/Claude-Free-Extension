@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createOpenAICompatibleFetch, parseExtraHeaders } from '@/lib/openai-compat';
+import { createOpenAICompatibleFetch, parseExtraHeaders, PROVIDERS } from '@/lib/openai-compat';
 import type { ProviderConfig } from '@/lib/types';
 
 // Extra-header support (the Opik / Comet-Workspace path): ProviderConfig
@@ -34,6 +34,20 @@ describe('parseExtraHeaders', () => {
     const { error } = parseExtraHeaders('{"X-Extra":42}');
     expect(error).toMatch(/X-Extra/);
     expect(error).toMatch(/string value/);
+  });
+});
+
+describe('PROVIDERS — tabi router preset', () => {
+  it('points at the OpenAI-compatible Tabi surface with a Claude default model', () => {
+    const tabi = PROVIDERS['tabi'];
+    expect(tabi).toBeDefined();
+    expect(tabi.baseURL).toBe('https://tabitoken.com/v1');
+    expect(tabi.defaultModel).toBe('claude-opus-4-8');
+    expect(tabi.supportsTools).toBe(true);
+    // Every Claude-family request maps to tabi's own Claude model id.
+    for (const claudeId of ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5']) {
+      expect(tabi.modelMap?.[claudeId]).toBe('claude-opus-4-8');
+    }
   });
 });
 

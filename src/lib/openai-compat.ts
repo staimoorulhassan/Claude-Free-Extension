@@ -248,7 +248,36 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     },
     contextWindow: 128_000,
   },
+  tabi: {
+    // ── Tabi Router — OpenAI-compatible Claude surface ──────────────────────
+    // Serves Claude models directly (verified: claude-opus-4-8 answers on
+    // https://tabitoken.com/v1/chat/completions with a Bearer key). Messages
+    // are translated Anthropic→OpenAI by this adapter and POSTed to
+    // /chat/completions, like the agentrouter-openai surface. Claude-family
+    // requests map to tabi's own Claude model ids.
+    // Wallet: https://tabitoken.com/wallet (account + API keys)
+    baseURL: 'https://tabitoken.com/v1',
+    defaultModel: 'claude-opus-4-8',
+    supportsVision: true,
+    supportsTools: true,
+    modelMap: {
+      'claude-opus-4-8': 'claude-opus-4-8',
+      'claude-opus-4-7': 'claude-opus-4-8',
+      'claude-opus-4-5': 'claude-opus-4-8',
+      'claude-sonnet-4-6': 'claude-opus-4-8',
+      'claude-sonnet-4-5': 'claude-opus-4-8',
+      'claude-haiku-4-5': 'claude-opus-4-8',
+      'claude-3-5-sonnet-20241022': 'claude-opus-4-8',
+      'claude-3-5-haiku-20241022': 'claude-opus-4-8',
+      'claude-3-opus-20240229': 'claude-opus-4-8',
+    },
+    contextWindow: 200_000,
+  },
 };
+
+export const TABI_NAME = 'tabi';
+/** Account + API-key page for the Tabi Router (https://tabitoken.com/wallet). */
+export const TABI_WALLET_URL = 'https://tabitoken.com/wallet';
 
 /**
  * Parses a user-typed JSON object of extra HTTP headers (from the settings
