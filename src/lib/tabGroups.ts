@@ -57,6 +57,44 @@ export function getGroupId(taskId: string): number | undefined {
   return groupsByTask.get(taskId);
 }
 
+/** Title of the extension-wide group created when the side panel opens, so the
+ * user's current tab and every tab the extension opens live in one place and
+ * stay visually separated from unrelated browsing. */
+const EXTENSION_GROUP_TITLE = 'Claude Free';
+
+let extensionGroupId: number | undefined;
+
+/** Groups an ungrouped web tab into the extension group, or returns the group
+ * the tab is already in (never hijacks a user's own group). Returns undefined
+ * when the tab can't be grouped (extension/chrome:// pages, closed tab, races). */
+export async function ensureExtensionGroup(tabId: number): Promise<number | undefined> {
+  let tab: chrome.tabs.Tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    return undefined;
+  }
+  if (!tab.url || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('chrome://')) return undefined;
+  if (typeof tab.groupId === 'number' && tab.groupId >= 0) {
+    extensionGroupId = tab.groupId;
+    return tab.groupId;
+  }
+  try {
+    const groupId = await chrome.tabs.group({ tabIds: [tabId] });
+    await chrome.tabGroups.update(groupId, { title: EXTENSION_GROUP_TITLE, color: GROUP_COLOR_ACTIVE });
+    extensionGroupId = groupId;
+    return groupId;
+  } catch {
+    return undefined; // raced with a user action or tab close
+  }
+}
+
+/** The extension group's id, if it exists this session (undefined after the
+ * group is closed — callers fall back to task-scoped grouping). */
+export function getExtensionGroupId(): number | undefined {
+  return extensionGroupId;
+}
+
 /** Clears bookkeeping for a task without touching any tabs — call after the tabs
  * themselves have already been closed (see closeTaskTabs in background.ts). */
 export function forgetGroup(taskId: string): void {
