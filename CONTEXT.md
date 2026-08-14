@@ -41,7 +41,7 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
     enforces this. HTML is forced to LF via `.gitattributes` (`*.html eol=lf`)
     because vite preserves source line endings — Windows autocrlf must never
     smudge CRLF into the committed artifact.
-  - `npm test` — vitest (`src/**` + `tests/unit`, 127 tests) plus `node --test`
+  - `npm test` — vitest (`src/**` + `tests/unit`, 128 tests) plus `node --test`
     spec-conformance checks (52 tests).
   - `npx playwright test` — the e2e suite (`tests/e2e`) loads `dist/` as an
     unpacked MV3 extension (headed Chromium). Locally: `PLAYWRIGHT_CHANNEL`
@@ -50,27 +50,37 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   `npm test` → build → **dist-sync guard** → **CRLF-in-dist check** →
   upload/attest; the `e2e` job installs the pinned bundled chromium
   (`npx playwright install --with-deps chromium`) and runs the full Playwright
-  suite under `xvfb-run`. **Every PR is gated on all of:** `npm test`
-  (127 vitest + 52 node), the full e2e suite (8 specs), the dist-sync guard
+  suite under `xvfb-run`. **Every PR is gated on all of:**  `npm test`
+  (128 vitest + 52 node), the full e2e suite (9 specs), the dist-sync guard
   (committed `dist/` must rebuild byte-identically), and the CRLF check
   (no committed file under `dist/` may contain a CR byte).
 
 ## Version picture
 
-- **Workspace:** v3.3.7 — a byte-identical copy of the CI-verified committed
-  `dist/` from `E:\claude-free-recon` at `f9b1136` (all top-level files
+- **Workspace:** v3.3.8 — a byte-identical copy of the CI-verified committed
+  `dist/` from `E:\claude-free-recon` at `54cd858` (all top-level files
   `cmp`-verified, `assets/` and `sounds/` directory-compared) — i.e. the same
-  build the v3.3.7 release zip contains, including the tabi provider preset
-  (PR #30). Older builds are preserved in this directory, recoverable if ever
-  needed: `dist-3.3.3-backup/` (the shipped v3.3.3 + hand-edits),
+  build the v3.3.8 release zip contains (tab-grouping from PR #35, the max
+  tool rounds setting from PR #36, the tabi provider, and everything through
+  PR #38). On top of that build the workspace re-applies the **Opik bridge
+  hand-edits**, which are not in the repo source and get clobbered by every
+  wholesale refresh (restored from the backup after this refresh): the
+  `<script src="/opik-client.js" defer>` tag in `sidepanel.html` and the
+  `http://127.0.0.1:4571 http://localhost:4571` entries in `manifest.json`
+  `connect-src` (the Agent-playground bridge wiring). Older builds are
+  preserved in this directory, recoverable if ever needed:
+  `dist-3.3.3-backup/` (the shipped v3.3.3 + hand-edits),
   `dist-pre-tabi-backup/` (the `57b91b0` copy — also recoverable from repo
-  commit `57b91b0`'s committed dist), and `dist-pre-3.3.7-backup/` (the
-  `6d6c9d7` copy).
-- **`main`:** v3.3.7 — the real source tree, with PRs #13–#33 merged
-  (currently at `f9b1136`). **Release v3.3.7 is published as Latest** with
-  `claude-free-extension-v3.3.7.zip` attached (built + attached by CI on the
-  `v3.3.7` tag), containing the tabi provider (PR #30) that the v3.3.6 release
-  missed. The workspace above is byte-identical to this build:
+  commit `57b91b0`'s committed dist), `dist-pre-3.3.7-backup/` (the
+  `6d6c9d7` copy), and `dist-pre-3.3.8-backup/` (the v3.3.7 `f9b1136` copy +
+  opik hand-edits).
+- **`main`:** v3.3.8 — the real source tree, with PRs #13–#38 merged
+  (currently at `54cd858`). **Release v3.3.8 is published as Latest** with
+  `claude-free-extension-v3.3.8.zip` attached (built + attached by CI on the
+  `v3.3.8` tag), containing tab-grouping (PR #35), the max tool rounds
+  setting (PR #36), the README refresh (PR #37), and the tabi provider
+  (PR #30). The workspace above is byte-identical to this build (plus the
+  Opik bridge hand-edits):
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
@@ -94,6 +104,12 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 | #30 | tabi provider preset (`https://tabitoken.com/v1`, claude-opus-4-8 default, Claude-family mapping) + wallet onboarding + `connect-src` CSP for `tabitoken.com` | — |
 | #31 | `CONTEXT.md` refresh — this file, extended through PR #30 | — |
 | #32 | version bump 3.3.6 → 3.3.7 (manifest + package + rebuilt dist/manifest) → release v3.3.7 published as Latest with dist.zip attached (absorbs the tabi provider) | — |
+| #33 | `CONTEXT.md` refresh — this file, extended through release v3.3.7 | — |
+| #34 | `CONTEXT.md` refresh — workspace now the v3.3.7 build | — |
+| #35 | panel-open tab grouping: opening the panel groups the current tab into a blue "Claude Free" group and every tab the agent opens joins it (task-scoped `🤖 Agent:` groups remain the fallback) | — |
+| #36 | configurable max tool rounds setting (default 25, slider 1–500 in sidepanel + options) replacing the hard-coded 25-round cap | — |
+| #37 | README refresh — version badge, tab-grouping + max-tool-rounds bullets, changelog rows | — |
+| #38 | version bump 3.3.7 → 3.3.8 (manifest + package + rebuilt dist/manifest) → release v3.3.8 published as Latest with dist.zip attached (tab-grouping + max tool rounds + README refresh) | — |
 
 ## Open decision: the 20% security system prompt
 
@@ -103,10 +119,13 @@ browser", plus research guidance) — a hand-reduced version of a longer securit
 preamble. The source default (`DEFAULT_SETTINGS.systemPrompt` in
 `src/lib/types.ts`) is empty.
 
-With the workspace now running the current source build, there is **no longer a
-workspace-only delta** — both sides carry the empty default. Whether to port the
-20% prompt back into source is still **pending the owner's decision**: committing
-it would bake that reduced prompt into every build.
+Both sides still carry the empty default (the workspace runs the current source
+build), so the 20% prompt remains **pending the owner's decision**: committing it
+would bake that reduced prompt into every build. Note the one remaining
+workspace-only delta is unrelated to the prompt: the Opik bridge hand-edits
+(`opik-client.js` script tag + `localhost:4571` CSP entries) documented above —
+a durable fix would port that wiring into the repo source (the `a11y.js`
+precedent).
 
 (Historical note: the old shipped `a11y.js` runtime patch and its stale
 references were removed from the workspace with this rebuild — that work was
