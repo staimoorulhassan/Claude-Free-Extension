@@ -3,7 +3,7 @@
  * and CDP-based computer use execution.
  */
 
-import { createOrJoinGroup, setGroupState, getGroupId, forgetGroup } from './lib/tabGroups';
+import { createOrJoinGroup, setGroupState, getGroupId, forgetGroup, ensureExtensionGroup, getExtensionGroupId } from './lib/tabGroups';
 import {
   newJournal, writeJournal, readJournal, completeJournal, abortJournal,
   addTaskTab, removeTaskTab, getTaskTabs,
@@ -1032,7 +1032,21 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
         if (currentTaskId) addTaskTab(currentTaskId, newTab.id).catch(() => {});
 
         let groupId: number | undefined;
-        if (currentTaskId && currentTaskOpenedTabs.size > 1) {
+        // Panel-open grouping: when the side panel opened the extension group,
+        // every tab this task opens joins it — the user's current tab and the
+        // task's tabs live in one group. Falls back to task-scoped grouping
+        // (created at the second tab, seeded with the first) when no extension
+        // group exists, e.g. the panel was never opened or the user closed it.
+        const extensionGroupId = getExtensionGroupId();
+        if (extensionGroupId !== undefined) {
+          try {
+            await chrome.tabs.group({ groupId: extensionGroupId, tabIds: [newTab.id] });
+            groupId = extensionGroupId;
+          } catch {
+            // Extension group was closed since the panel opened — fall through to task grouping.
+          }
+        }
+        if (groupId === undefined && currentTaskId && currentTaskOpenedTabs.size > 1) {
           groupId = await createOrJoinGroup(currentTaskId, currentTaskName, newTab.id);
           // First time crossing the 1→2 threshold: the earlier tab also needs to join.
           if (priorFirstTabId !== undefined) {
@@ -1082,6 +1096,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       sendResponse({ type: 'PONG' });
     })().catch(() => sendResponse({ type: 'PONG' }));
+    return true;
+  }
+
+  if (msg.type === 'PANEL_OPENED') {
+    // Side panel opened: group the user's current web tab into the extension
+    // group so the agent's work stays visually isolated from other browsing.
+    // No-op when the active tab is already grouped or isn't a web tab.
+    (async () => {
+      try {
+        const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (active?.id) await ensureExtensionGroup(active.id);
+      } catch { /* best-effort */ }
+      sendResponse({ ok: true });
+    })();
     return true;
   }
 
