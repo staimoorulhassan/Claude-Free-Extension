@@ -629,4 +629,23 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
       logSpy.mock.calls.some(c => String(c[0]).includes('[Agent Loop] Max iterations reached')),
     ).toBe(true);
   });
+
+  it('respects a custom max tool rounds setting', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    resetStore({ maxToolRounds: 2, debugMode: true });
+
+    customFetchMock.mockImplementation(async () => makeFakeResponse({ chunks: [toolUseSSE()] }).response);
+    executeToolMock.mockResolvedValue([{ type: 'text', text: 'ok' }]);
+
+    await useStore.getState().sendMessage([{ type: 'text', text: 'keep going' }]);
+
+    expect(useStore.getState().error).toBe(
+      'Agent stopped after 2 tool rounds. Try breaking the task into smaller steps.',
+    );
+    expect(customFetchMock).toHaveBeenCalledTimes(3);
+    expect(executeToolMock).toHaveBeenCalledTimes(2);
+    expect(
+      logSpy.mock.calls.some(c => String(c[0]).includes('[Agent Loop] Max iterations reached')),
+    ).toBe(true);
+  });
 });

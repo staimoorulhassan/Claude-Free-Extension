@@ -184,6 +184,8 @@ export interface AppSettings {
   provider: ProviderConfig;
   systemPrompt: string;
   maxTokens: number;
+  /** Cap on agent-loop tool rounds per task (the loop's 25-round default). */
+  maxToolRounds: number;
   computerUseEnabled: boolean;
   requireApproval: boolean;
   theme: 'auto' | 'light' | 'dark';
@@ -199,6 +201,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   systemPrompt: '',
   maxTokens: 4096,
+  maxToolRounds: 25,
   computerUseEnabled: true,
   requireApproval: true,
   theme: 'auto',
