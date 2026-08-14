@@ -4,7 +4,7 @@
 
 > A Chrome side panel powered by **any free AI provider** — Gemini, DeepSeek, Groq, OpenRouter, Ollama and more. Full browser computer use included. No Claude subscription required.
 
-[![Version](https://img.shields.io/badge/version-3.3.5-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases/tag/v3.3.5)
+[![Version](https://img.shields.io/badge/version-3.3.8-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases/tag/v3.3.8)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome)](https://developer.chrome.com/docs/extensions/mv3/)
 [![GitHub stars](https://img.shields.io/github/stars/staimoorulhassan/Claude-Free-Extension?style=social)](https://github.com/staimoorulhassan/Claude-Free-Extension)
@@ -105,8 +105,9 @@ The AI can **see and control your browser** in real time:
 - 🥷 **Steel stealth browser** — routes automation through a Steel browser session to bypass bot detection and solve CAPTCHAs automatically (note: the current Steel execution backend is a stub — see `specs/001-claude-free-extension/research.md` §10)
 - 📹 **Action recording** — record sequences as training data and replay them
 - 🩹 **Self-healing** — auto-dismisses cookie/consent overlays blocking a click target, then retries; falls back to asking you after two failed attempts on the same element
-- 🗂️ **Task-scoped tab groups** — when a task drives more than one tab, they're grouped and labeled (`🤖 Agent: <task>`) so it's obvious what's automated; "Terminate Task" closes exactly those tabs
+- 🗂️ **Tab groups** — opening the panel groups your current tab into a blue **"Claude Free"** group and every tab the agent opens joins it, so automated work stays visually isolated from your other browsing (never hijacks groups you made yourself). When no panel group exists, tasks fall back to task-scoped groups labeled `🤖 Agent: <task>`; "Terminate Task" closes exactly the tabs a task opened
 - 💾 **Crash-resilient state** — task progress is journaled to `chrome.storage.local` after every round, so a service-worker restart mid-task doesn't lose your conversation
+- 🔢 **Configurable tool-round cap** — the agent loop's max tool rounds (default 25) is a visible setting (`Settings → Max tool rounds`), so long tasks aren't hard-stopped at 25 rounds
 
 **Tool actions available to the agent**: `navigate`, `read_page_state` (accessibility tree + console/network errors + optional screenshot), `click_element`, `type_text`, `type`, `key`, `scroll`, `execute_js`, `manage_tabs`, `ask_user`, plus the original coordinate-based `left_click`/`right_click`/`double_click`/`middle_click`/`left_click_drag`/`screenshot`/`wait`/`read_page`.
 
@@ -177,6 +178,9 @@ Good first issues are labeled [`good first issue`](https://github.com/staimoorul
 
 | Version | Highlights |
 |---|---|
+| **v3.3.8** | Panel-open tab grouping (current tab + agent tabs in one "Claude Free" group) and a configurable max tool rounds setting |
+| **v3.3.7** | Tabi Router provider preset with wallet onboarding |
+| **v3.3.6** | Opik LLM Gateway support via per-provider extra headers |
 | **v3.2.1** | Blue glow border + phantom cursor during computer use |
 | **v3.2.0** | Visual redesign, Steel stealth browser, per-provider API vault, action recording |
 | **v3.0.1** | Build fix for fresh clones (`accessibility-tree.js` committed) |
