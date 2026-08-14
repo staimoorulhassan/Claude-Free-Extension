@@ -99,6 +99,9 @@ export function App() {
           <Field label={`Max tokens: ${settings.maxTokens}`}>
             <input type="range" min={256} max={32000} step={256} value={settings.maxTokens} onChange={e => update({ maxTokens: Number(e.target.value) })} style={{ accentColor: '#c96442' }} />
           </Field>
+          <Field label={`Max tool rounds: ${settings.maxToolRounds}`}>
+            <input type="range" min={1} max={500} step={1} value={settings.maxToolRounds} onChange={e => update({ maxToolRounds: Number(e.target.value) })} style={{ accentColor: '#c96442' }} />
+          </Field>
         </div>
       </section>
 

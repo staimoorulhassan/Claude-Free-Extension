@@ -285,6 +285,18 @@ export function SettingsPanel() {
               onChange={e => set({ maxTokens: Number(e.target.value) })}
             />
           </div>
+          <div className="field">
+            <label>Max tool rounds: {settings.maxToolRounds}</label>
+            <input
+              type="range"
+              aria-label="Max tool rounds"
+              min={1}
+              max={500}
+              step={1}
+              value={settings.maxToolRounds}
+              onChange={e => set({ maxToolRounds: Number(e.target.value) })}
+            />
+          </div>
         </div>
       </div>
 

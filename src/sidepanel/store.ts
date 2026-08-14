@@ -723,8 +723,8 @@ export const useStore = create<Store>((set, get) => ({
           break;
         }
 
-        if (agentIteration++ >= 25) {
-          set({ error: 'Agent stopped after 25 tool rounds. Try breaking the task into smaller steps.' });
+        if (agentIteration++ >= settings.maxToolRounds) {
+          set({ error: `Agent stopped after ${settings.maxToolRounds} tool rounds. Try breaking the task into smaller steps.` });
           if (debugMode) console.log('[Agent Loop] Max iterations reached');
           break;
         }
