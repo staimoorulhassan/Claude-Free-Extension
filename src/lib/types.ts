@@ -188,6 +188,8 @@ export interface AppSettings {
   maxToolRounds: number;
   computerUseEnabled: boolean;
   requireApproval: boolean;
+  /** Boss mode: maximum-authority system prompt + red glow indicator. */
+  bossMode: boolean;
   theme: 'auto' | 'light' | 'dark';
   useSteel?: boolean;
   steel?: SteelConfig;
@@ -204,6 +206,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxToolRounds: 25,
   computerUseEnabled: true,
   requireApproval: true,
+  bossMode: false,
   theme: 'auto',
   useSteel: false,
   steel: {

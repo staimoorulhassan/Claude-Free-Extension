@@ -9,18 +9,33 @@ let stopContainer: HTMLDivElement | null = null;
 let phantomCursor: HTMLDivElement | null = null;
 let isActive = false;
 let wasActiveBeforeHide = false;
+// Boss mode themes the glow red (normal = blue) via the SHOW_AGENT_INDICATORS message.
+let bossMode = false;
 
 // ── Styles ────────────────────────────────────────────────────────────────────
+
+/** Glow theme — blue normally, red in boss mode. */
+function themeColors() {
+  return bossMode
+    ? { rgb: '239,68,68', hex: '#EF4444', fill: '#FEF2F2' } // red
+    : { rgb: '59,130,246', hex: '#3B82F6', fill: '#EFF6FF' }; // blue
+}
 
 function injectStyles() {
   if (document.getElementById('claude-agent-styles')) return;
   const style = document.createElement('style');
   style.id = 'claude-agent-styles';
+  // Both keyframes are defined once; showGlow picks the animation by theme.
   style.textContent = `
     @keyframes claude-pulse {
       0%   { box-shadow: inset 0 0 12px rgba(59,130,246,0.55), inset 0 0 24px rgba(59,130,246,0.35), inset 0 0 40px rgba(59,130,246,0.15), 0 0 0 2px rgba(59,130,246,0.6); }
       50%  { box-shadow: inset 0 0 18px rgba(59,130,246,0.80), inset 0 0 32px rgba(59,130,246,0.55), inset 0 0 50px rgba(59,130,246,0.25), 0 0 0 2px rgba(59,130,246,0.9); }
       100% { box-shadow: inset 0 0 12px rgba(59,130,246,0.55), inset 0 0 24px rgba(59,130,246,0.35), inset 0 0 40px rgba(59,130,246,0.15), 0 0 0 2px rgba(59,130,246,0.6); }
+    }
+    @keyframes claude-pulse-boss {
+      0%   { box-shadow: inset 0 0 12px rgba(239,68,68,0.55), inset 0 0 24px rgba(239,68,68,0.35), inset 0 0 40px rgba(239,68,68,0.15), 0 0 0 2px rgba(239,68,68,0.6); }
+      50%  { box-shadow: inset 0 0 18px rgba(239,68,68,0.80), inset 0 0 32px rgba(239,68,68,0.55), inset 0 0 50px rgba(239,68,68,0.25), 0 0 0 2px rgba(239,68,68,0.9); }
+      100% { box-shadow: inset 0 0 12px rgba(239,68,68,0.55), inset 0 0 24px rgba(239,68,68,0.35), inset 0 0 40px rgba(239,68,68,0.15), 0 0 0 2px rgba(239,68,68,0.6); }
     }
   `;
   document.head.appendChild(style);
@@ -36,11 +51,15 @@ function showGlow() {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       pointer-events: none; z-index: 2147483646;
       opacity: 0; transition: opacity 0.3s ease-in-out;
-      animation: claude-pulse 2s ease-in-out infinite;
-      box-shadow: inset 0 0 12px rgba(59,130,246,0.55), inset 0 0 24px rgba(59,130,246,0.35), inset 0 0 40px rgba(59,130,246,0.15), 0 0 0 2px rgba(59,130,246,0.6);
     `;
     document.body.appendChild(glowBorder);
   }
+  // Re-apply the theme on every show: the element can survive from a previous
+  // run (hide→show within the 300ms cleanup window), so it must pick up the
+  // current mode instead of its creation-time color.
+  const c = themeColors();
+  glowBorder.style.animation = `${bossMode ? 'claude-pulse-boss' : 'claude-pulse'} 2s ease-in-out infinite`;
+  glowBorder.style.boxShadow = `inset 0 0 12px rgba(${c.rgb},0.55), inset 0 0 24px rgba(${c.rgb},0.35), inset 0 0 40px rgba(${c.rgb},0.15), 0 0 0 2px rgba(${c.rgb},0.6)`;
   glowBorder.style.display = '';
   requestAnimationFrame(() => { if (glowBorder) glowBorder.style.opacity = '1'; });
 }
@@ -136,14 +155,25 @@ function moveCursor(x: number, y: number): Promise<void> {
       will-change: transform;
     `;
     phantomCursor.appendChild(mkSvg('claude-phantom-cursor-plain', 'white', '#111', ''));
+    const c = themeColors();
     phantomCursor.appendChild(mkSvg(
-      'claude-phantom-cursor-styled', '#3B82F6', '#EFF6FF',
-      'filter:drop-shadow(0 0 5px rgba(59,130,246,1)) drop-shadow(0 0 12px rgba(59,130,246,0.7)) drop-shadow(0 0 20px rgba(59,130,246,0.4));',
+      'claude-phantom-cursor-styled', c.hex, c.fill,
+      `filter:drop-shadow(0 0 5px rgba(${c.rgb},1)) drop-shadow(0 0 12px rgba(${c.rgb},0.7)) drop-shadow(0 0 20px rgba(${c.rgb},0.4));`,
     ));
     document.body.appendChild(phantomCursor);
     return Promise.resolve();
   }
 
+  // Re-theme a surviving cursor from a previous run (same 300ms cleanup
+  // window as the glow border) so it matches the current mode.
+  const styled = phantomCursor.querySelector<SVGSVGElement>('#claude-phantom-cursor-styled');
+  if (styled) {
+    const c = themeColors();
+    styled.style.filter = `drop-shadow(0 0 5px rgba(${c.rgb},1)) drop-shadow(0 0 12px rgba(${c.rgb},0.7)) drop-shadow(0 0 20px rgba(${c.rgb},0.4))`;
+    const paths = styled.querySelectorAll('path');
+    if (paths[0]) { paths[0].setAttribute('stroke', c.hex); paths[0].setAttribute('fill', c.hex); }
+    if (paths[1]) paths[1].setAttribute('fill', c.fill);
+  }
   phantomCursor.style.display = '';
   phantomCursor.style.transform = `translate3d(${x}px, ${y}px, 0)`;
 
@@ -194,6 +224,7 @@ function hideAll() {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   switch (msg.type) {
     case 'SHOW_AGENT_INDICATORS':
+      bossMode = !!msg.bossMode;
       showAll();
       sendResponse({ success: true });
       break;

@@ -334,6 +334,22 @@ export function SettingsPanel() {
           )}
           
           <div className="toggle-row">
+            <label>
+              Boss mode
+              <span className="toggle-hint">Maximum-authority system prompt; the agent glow turns red while working</span>
+            </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                aria-label="Boss mode"
+                checked={settings.bossMode ?? false}
+                onChange={e => set({ bossMode: e.target.checked })}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+
+          <div className="toggle-row">
             <label>Use Steel stealth browser</label>
             <label className="toggle">
               <input
