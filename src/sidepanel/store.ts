@@ -956,10 +956,9 @@ export const useStore = create<Store>((set, get) => ({
           })),
         }));
 
-        if (stopReason !== 'tool_use') break;
-
         const toolUseBlocks = finishedBlocks.filter(b => b.type === 'tool_use') as ToolUseBlock[];
         if (!toolUseBlocks.length) break;
+        if (stopReason !== 'tool_use') stopReason = 'tool_use';
 
         // T022: execute_js always requires approval regardless of settings.requireApproval —
         // it's the one action with unbounded blast radius (arbitrary script execution).

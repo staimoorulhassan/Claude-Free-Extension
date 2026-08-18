@@ -808,6 +808,7 @@ export function createOpenAICompatibleFetch(config: ProviderConfig): typeof fetc
           try { inp = JSON.parse(fn['arguments'] as string || '{}'); } catch { inp = { _raw: fn['arguments'] }; }
           content.push({ type: 'tool_use', id: tc['id'], name: fn['name'], input: inp });
         }
+        if (msg['tool_calls'].length > 0) stopReason = 'tool_use';
       }
     }
     return new Response(JSON.stringify({ id: msgId, type: 'message', role: 'assistant', content, model: anthropicModel, stop_reason: stopReason, stop_sequence: null, usage: { input_tokens: usage['prompt_tokens'] ?? 0, output_tokens: usage['completion_tokens'] ?? 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });

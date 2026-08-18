@@ -770,4 +770,38 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
       logSpy.mock.calls.some(c => String(c[0]).includes('[Agent Loop] Max iterations reached')),
     ).toBe(true);
   });
+
+  it('continues the loop when tool_use blocks are present even if stop_reason is end_turn', async () => {
+    resetStore({ maxToolRounds: 3 });
+
+    // Round 1: stop_reason=end_turn but tool_use blocks emitted — the loop must still
+    // execute the tool and continue (tool_use blocks are the authority, not stop_reason)
+    const toolChunks = sseEvents([
+      { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tool_1', name: 'noop', input: {} } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{}' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null } },
+    ]);
+    // Round 2: pure text, no tool_use — loop should break
+    const endChunks = sseEvents([
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'done' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null } },
+    ]);
+    let callCount = 0;
+    customFetchMock.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) return makeFakeResponse({ chunks: [toolChunks] }).response;
+      return makeFakeResponse({ chunks: [endChunks] }).response;
+    });
+    executeToolMock.mockResolvedValue([{ type: 'text', text: 'ok' }]);
+
+    await useStore.getState().sendMessage([{ type: 'text', text: 'go' }]);
+
+    // 2 loop fetches + 1 generateConversationTitle fetch = 3 total
+    expect(executeToolMock).toHaveBeenCalledTimes(1);
+    expect(customFetchMock).toHaveBeenCalledTimes(3);
+    expect(useStore.getState().error).toBeNull();
+  });
 });

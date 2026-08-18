@@ -10,6 +10,8 @@ chrome.runtime.sendMessage({ type: 'PING' }).catch(() => {});
 
 // ── Recording ─────────────────────────────────────────────────────────────────
 
+(function () {
+
 let isRecording = false;
 
 function sendStep(step: RecordedStep) {
@@ -85,3 +87,5 @@ chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
   }
   return false;
 });
+
+})(); // IIFE isolates declarations — prevents SyntaxError on double-injection
