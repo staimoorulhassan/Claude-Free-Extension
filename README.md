@@ -142,7 +142,7 @@ src/
 accessibility-tree.js      # Injected into MAIN world for native-quality DOM interaction
 ```
 
-The built-in **Anthropic↔OpenAI adapter** (`src/lib/`) is what makes all 12 providers work transparently — the rest of the codebase only speaks Anthropic message format.
+The built-in **Anthropic↔OpenAI adapter** (`src/lib/`) is what makes all 16 provider presets work transparently — the rest of the codebase only speaks Anthropic message format.
 
 ---
 
