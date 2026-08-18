@@ -41,7 +41,7 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
     enforces this. HTML is forced to LF via `.gitattributes` (`*.html eol=lf`)
     because vite preserves source line endings — Windows autocrlf must never
     smudge CRLF into the committed artifact.
-  - `npm test` — vitest (`src/**` + `tests/unit`, 133 tests) plus `node --test`
+  - `npm test` — vitest (`src/**` + `tests/unit`, 137 tests) plus `node --test`
     spec-conformance checks (52 tests).
   - `npx playwright test` — the e2e suite (`tests/e2e`) loads `dist/` as an
     unpacked MV3 extension (headed Chromium). Locally: `PLAYWRIGHT_CHANNEL`
@@ -51,7 +51,7 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   upload/attest; the `e2e` job installs the pinned bundled chromium
   (`npx playwright install --with-deps chromium`) and runs the full Playwright
   suite under `xvfb-run`. **Every PR is gated on all of:**  `npm test`
-  (133 vitest + 52 node), the full e2e suite (9 specs), the dist-sync guard
+  (137 vitest + 52 node), the full e2e suite (9 specs), the dist-sync guard
   (committed `dist/` must rebuild byte-identically), and the CRLF check
   (no committed file under `dist/` may contain a CR byte).
 
@@ -76,13 +76,18 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   `6d6c9d7` copy), `dist-pre-3.3.8-backup/` (the v3.3.7 `f9b1136` copy +
   opik hand-edits), and `dist-pre-3.3.9-backup/` (the v3.3.8 `54cd858` copy
   + opik hand-edits).
-- **`main`:** v3.3.9 — the real source tree, with PRs #13–#44 merged
-  (currently at `9f064b1`). **Release v3.3.9 is published as Latest** with
+- **`main`:** v3.3.9 — the real source tree, with PRs #13–#47 merged
+  (currently at `29b61f8`). **Release v3.3.9 is published as Latest** with
   `claude-free-extension-v3.3.9.zip` attached (built + attached by CI on the
   `v3.3.9` tag), containing the 4xx fail-fast error handling (PRs #40/#42),
   the WCAG 1.4.3 AA contrast + landmark fixes (PR #41), the README refresh
-  (PR #43), and the version bump (PR #44). The workspace above is
-  byte-identical to this build (plus the Opik bridge hand-edits):
+  (PR #43), and the version bump (PR #44). Merged since the release but still
+  **unreleased** (the version remains 3.3.9): **Boss mode** (PR #46 — a
+  visible toggle that switches the system prompt to the maximum-authority
+  profile and turns the agent glow red while working) and the **Novarouter
+  provider** (PR #47 — free lifetime Claude Fable 5 preset, 1M context,
+  `billed: false`), plus the CONTEXT refresh (PR #45). The workspace above
+  is byte-identical to this build (plus the Opik bridge hand-edits):
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
@@ -112,11 +117,15 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 | #36 | configurable max tool rounds setting (default 25, slider 1–500 in sidepanel + options) replacing the hard-coded 25-round cap | — |
 | #37 | README refresh — version badge, tab-grouping + max-tool-rounds bullets, changelog rows | — |
 | #38 | version bump 3.3.7 → 3.3.8 (manifest + package + rebuilt dist/manifest) → release v3.3.8 published as Latest with dist.zip attached (tab-grouping + max tool rounds + README refresh) | — |
+| #39 | `CONTEXT.md` refresh — this file, extended through release v3.3.8 | — |
 | #40 | 401/403 fail-fast in the agent loop (`streamWithRetry` never retries non-transient client errors) + friendly 403 message (check key/balance) | — |
 | #41 | WCAG 1.4.3 AA color-contrast fixes (header-provider, model-mode toggle, saved-badge, options save button) + `<main>`/h1/`<header>` landmarks | — |
 | #42 | 400/404 fail-fast (real openai-compat 404 bodies were still retried via the "Provider" catch-all) + friendly 400/404 messages; 429/5xx/network stay retryable | — |
 | #43 | README refresh — version badge, v3.3.9 changelog row | — |
 | #44 | version bump 3.3.8 → 3.3.9 (manifest + package + rebuilt dist/manifest) → release v3.3.9 published as Latest with dist.zip attached | — |
+| #45 | `CONTEXT.md` refresh — this file, extended through release v3.3.9 | — |
+| #46 | Boss mode: visible toggle (sidepanel + options) switching the system prompt to the maximum-authority profile (exact skill-contract override phrase, positive-imperative framing) + red-from-blue agent glow theming | — |
+| #47 | Novarouter provider preset (`https://novarouter.site/v1`, free lifetime Claude Fable 5 — 1M context, `billed: false`) + README provider/changelog rows | — |
 
 ## Open decision: the 20% security system prompt
 
