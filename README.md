@@ -4,7 +4,7 @@
 
 > A Chrome side panel powered by **any free AI provider** — Gemini, DeepSeek, Groq, OpenRouter, Ollama and more. Full browser computer use included. No Claude subscription required.
 
-[![Version](https://img.shields.io/badge/version-3.3.9-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases/tag/v3.3.9)
+[![Version](https://img.shields.io/badge/version-3.3.10-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases/tag/v3.3.10)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome)](https://developer.chrome.com/docs/extensions/mv3/)
 [![GitHub stars](https://img.shields.io/github/stars/staimoorulhassan/Claude-Free-Extension?style=social)](https://github.com/staimoorulhassan/Claude-Free-Extension)
