@@ -273,6 +273,31 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     },
     contextWindow: 200_000,
   },
+  novarouter: {
+    // ── Novarouter — OpenAI-compatible Claude surface, free Fable 5 ─────────
+    // Serves Claude models on https://novarouter.site/v1/chat/completions
+    // (verified live: /v1/models lists claude-fable-5 with billed:false — free
+    // lifetime, no subscription). Auth is a Bearer key from the provider, like
+    // any keyed preset. Messages are translated Anthropic→OpenAI by this
+    // adapter (same surface as agentrouter-openai / tabi). Claude-family
+    // requests map to the free Fable 5 model.
+    baseURL: 'https://novarouter.site/v1',
+    defaultModel: 'claude-fable-5',
+    supportsVision: true,
+    supportsTools: true,
+    modelMap: {
+      'claude-opus-4-8': 'claude-fable-5',
+      'claude-opus-4-7': 'claude-fable-5',
+      'claude-opus-4-5': 'claude-fable-5',
+      'claude-sonnet-4-6': 'claude-fable-5',
+      'claude-sonnet-4-5': 'claude-fable-5',
+      'claude-haiku-4-5': 'claude-fable-5',
+      'claude-3-5-sonnet-20241022': 'claude-fable-5',
+      'claude-3-5-haiku-20241022': 'claude-fable-5',
+      'claude-3-opus-20240229': 'claude-fable-5',
+    },
+    contextWindow: 1_000_000,
+  },
 };
 
 export const TABI_NAME = 'tabi';

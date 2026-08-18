@@ -71,6 +71,7 @@ Swap AI providers anytime in Settings — each provider's API key is stored sepa
 | **Groq** | ✅ Fast & free | ❌ | ✅ | [console.groq.com](https://console.groq.com) |
 | **Mistral** | ✅ Free tier | ✅ | ✅ | [console.mistral.ai](https://console.mistral.ai) |
 | **Kimi (Moonshot)** | ✅ Free credits | ✅ | ✅ | [platform.moonshot.cn](https://platform.moonshot.cn) |
+| **Novarouter** | ✅ Free Claude Fable 5, lifetime | ✅ | ✅ | [novarouter.site](https://novarouter.site) — 1M context, no subscription |
 | **Ollama** | ✅ Fully local | ✅ | ✅ | No key, runs on your machine |
 | **LM Studio** | ✅ Fully local | ❌ | ✅ | No key, runs on your machine |
 
@@ -178,6 +179,7 @@ Good first issues are labeled [`good first issue`](https://github.com/staimoorul
 
 | Version | Highlights |
 |---|---|
+| **v3.3.10** | Novarouter provider preset with the free lifetime Claude Fable 5 (1M context, `billed: false` — no subscription), available to everyone in Settings; plus Boss mode — a visible toggle that switches the system prompt to the maximum-authority profile and turns the agent glow red while working |
 | **v3.3.9** | Error-handling hardening — the agent loop fails fast on non-transient HTTP 4xx client errors (400/401/403/404) instead of retrying until the 10-minute timeout, with actionable messages for bad requests, bad keys, out-of-credits, and misconfigured models; plus WCAG 1.4.3 AA color-contrast fixes and landmark/heading structure across the side panel and options |
 | **v3.3.8** | Panel-open tab grouping (current tab + agent tabs in one "Claude Free" group) and a configurable max tool rounds setting |
 | **v3.3.7** | Tabi Router provider preset with wallet onboarding |
