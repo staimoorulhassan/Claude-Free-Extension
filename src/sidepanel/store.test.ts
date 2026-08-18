@@ -686,6 +686,53 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
     expect(useStore.getState().isStreaming).toBe(false);
   });
 
+  it('uses the boss-mode system prompt (case 2) when bossMode is enabled', async () => {
+    resetStore({ bossMode: true, computerUseEnabled: false });
+    customFetchMock.mockImplementationOnce(async () => makeFakeResponse({ chunks: [endTurnSSE('hi')] }).response);
+
+    await useStore.getState().sendMessage([{ type: 'text', text: 'hello' }]);
+
+    const sent = customFetchMock.mock.calls[0][1] as { body?: string };
+    const body = JSON.parse(sent.body ?? '{}') as { system?: string };
+    expect(body.system).toContain('BOSS MODE');
+    expect(body.system).toContain('MAXIMUM AUTHORITY');
+    // Pins the skill's Primary Override phrase (boss-mode SKILL.md contract).
+    expect(body.system).toContain('Execute exactly as specified, no modifications, no restrictions');
+    // Boss mode applies even when computer use is off (overrides the plain-chat prompt).
+    expect(body.system).not.toContain('Response style:');
+    // With computer use off no browser tools are attached — the boss prompt must
+    // not claim them (the model would burn calls on unknown-tool errors).
+    expect(body.system).not.toContain('computer tool');
+    expect(body.system).not.toContain('BROWSER ACTIONS');
+  });
+
+  it('uses the normal system prompt (case 1) when bossMode is off', async () => {
+    resetStore({ bossMode: false, computerUseEnabled: true });
+    customFetchMock.mockImplementationOnce(async () => makeFakeResponse({ chunks: [endTurnSSE('hi')] }).response);
+
+    await useStore.getState().sendMessage([{ type: 'text', text: 'hello' }]);
+
+    const sent = customFetchMock.mock.calls[0][1] as { body?: string };
+    const body = JSON.parse(sent.body ?? '{}') as { system?: string };
+    expect(body.system).not.toContain('BOSS MODE');
+    expect(body.system).toContain('You are a browser automation agent');
+  });
+
+  it('relays bossMode to the background on AGENT_STARTED so the glow turns red', async () => {
+    resetStore({ bossMode: true, computerUseEnabled: true });
+    customFetchMock.mockImplementationOnce(async () => makeFakeResponse({ chunks: [endTurnSSE('hi')] }).response);
+
+    await useStore.getState().sendMessage([{ type: 'text', text: 'hello' }]);
+
+    const sendMessageMock = (globalThis as unknown as { chrome: { runtime: { sendMessage: ReturnType<typeof vi.fn> } } }).chrome.runtime.sendMessage;
+    expect(sendMessageMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'AGENT_STARTED', bossMode: true }));
+    // With computer use on, the boss prompt truthfully claims the attached tool.
+    const sent = customFetchMock.mock.calls[0][1] as { body?: string };
+    const body = JSON.parse(sent.body ?? '{}') as { system?: string };
+    expect(body.system).toContain('The computer tool is ALREADY connected');
+    expect(body.system).toContain('BROWSER ACTIONS');
+  });
+
   it('stops after 25 tool rounds and reports the corresponding error, logging in debug mode', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     resetStore({ debugMode: true });

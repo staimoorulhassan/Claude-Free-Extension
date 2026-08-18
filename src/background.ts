@@ -1172,7 +1172,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     currentTaskOpenedTabs = new Set(); // T018: fresh per-task tab tracking for manage_tabs
     currentTaskId = (msg.taskId as string | undefined) ?? null;
     currentTaskName = (msg.taskName as string | undefined) ?? 'Task';
-    broadcastToWebTabs({ type: 'SHOW_AGENT_INDICATORS' });
+    broadcastToWebTabs({ type: 'SHOW_AGENT_INDICATORS', bossMode: !!msg.bossMode });
     if (currentTaskId) {
       const taskId = currentTaskId;
       (async () => {
