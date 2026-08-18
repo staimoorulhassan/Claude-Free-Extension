@@ -9,10 +9,11 @@
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome)](https://developer.chrome.com/docs/extensions/mv3/)
 [![GitHub stars](https://img.shields.io/github/stars/staimoorulhassan/Claude-Free-Extension?style=social)](https://github.com/staimoorulhassan/Claude-Free-Extension)
 [![Last commit](https://img.shields.io/github/last-commit/staimoorulhassan/Claude-Free-Extension)](https://github.com/staimoorulhassan/Claude-Free-Extension/commits)
+[![CI](https://github.com/staimoorulhassan/Claude-Free-Extension/actions/workflows/build.yml/badge.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/actions/workflows/build.yml)
 
 **The Claude chat experience — for free, in your browser, with any AI provider.**
 
-[🚀 Install in 60 seconds](#-quick-start) · [🎯 Supported Providers](#-supported-providers) · [🖥️ Computer Use](#️-browser-computer-use) · [📦 Releases](https://github.com/staimoorulhassan/Claude-Free-Extension/releases)
+[🚀 Install in 60 seconds](#-quick-start) · [🎯 Supported Providers](#-supported-providers) · [🖥️ Computer Use](#️-browser-computer-use) · [✨ Features](#-features) · [🏗️ Architecture](#️-architecture) · [📋 Changelog](#-changelog) · [🤝 Contributing](#-contributing) · [📦 Releases](https://github.com/staimoorulhassan/Claude-Free-Extension/releases)
 
 <img src="docs/screenshots/demo-banner.svg" width="900" alt="Claude Free Extension — hero banner"/>
 
@@ -22,7 +23,7 @@
 
 ## ✨ What is Claude Free Extension?
 
-Claude Free Extension is a **Chrome side panel** that gives you a full-featured AI assistant on any webpage — without paying for a Claude subscription. It translates between Anthropic's message format and OpenAI-compatible APIs so you can plug in **Gemini, DeepSeek, Groq, Ollama, OpenRouter** (and 8 more providers) with zero code changes.
+Claude Free Extension is a **Chrome side panel** that gives you a full-featured AI assistant on any webpage — without paying for a Claude subscription. It translates between Anthropic's message format and OpenAI-compatible APIs so you can plug in **Gemini, DeepSeek, Groq, Ollama, OpenRouter** — 16 built-in provider presets in total — with zero code changes.
 
 Unlike other AI extensions, it ships with **browser computer use** — the AI can literally see your screen, move the cursor, click buttons, fill forms, and navigate pages in real time using the Chrome DevTools Protocol.
 
