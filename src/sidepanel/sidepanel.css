@@ -66,6 +66,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .app { display: flex; flex-direction: column; height: 100vh; }
+/* WCAG 1.3.1/4.1.2: main landmark wraps the panels; preserves the flex layout
+ * (the panels themselves keep flex:1 + overflow-y:auto, so scrolling is intact). */
+.app-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 .header { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; box-shadow: var(--shadow-sm); }
@@ -334,6 +337,22 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
  * Light #6f6a61 = 5.1:1 on --bg; dark #a59e94 = 6.6:1 on --bg. */
 :root { --text3: #6f6a61; }
 [data-theme=dark] { --text3: #a59e94; }
+/* The provider pill sits on --bg3 (darker than --bg), so it needs a darker
+ * text than the --text3 default: #635f57 = 4.96:1 on --bg3 (WCAG 1.4.3). */
+[data-theme=light] .header-provider { color: #635f57; }
+/* model-mode toggle is a text link on the settings card (--asst-bg). Light
+ * accent #c96442 is only 3.9:1 on #fff; darken to #a14b26 = 5.92:1. Dark
+ * accent is 4.07:1 on #242220, so lighten to #e07a55 = 5.35:1. Hover keeps
+ * the existing accent-h on light (4.84:1 on #fff) but needs a lighter hover
+ * in dark (accent-h is only 3.27:1 there) — #f08a63 = 6.43:1. */
+[data-theme=light] .model-mode-btn { color: #a14b26; }
+[data-theme=dark] .model-mode-btn { color: #e07a55; }
+[data-theme=light] .model-mode-btn:hover { color: var(--accent-h); }
+[data-theme=dark] .model-mode-btn:hover { color: #f08a63; }
+/* "saved locally" badge: light success #16a34a is only 3.0:1 on --success-bg
+ * (#dcfce7); darken to #15803d = 4.57:1. Dark theme override below already
+ * passes (6.49:1). */
+[data-theme=light] .apikey-saved-badge { color: #15803d; }
 /* Primary action button (inline-styled save): white on #a14b26 = 5.9:1. */
 button[type=submit] { background-color: #a14b26 !important; }
 /* Visible keyboard focus (WCAG 2.4.7/1.4.11: >=3:1 on both themes). */

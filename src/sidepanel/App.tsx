@@ -46,26 +46,32 @@ export function App() {
       )}
       <Header />
 
-      {showSettings ? (
-        <SettingsPanel />
-      ) : showHistory ? (
-        <HistoryPanel />
-      ) : showRecordings ? (
-        <RecordingsPanel />
-      ) : (
-        <>
-          <Chat />
-          {error && (
-            <div className="error-bar">
-              <span>{error}</span>
-              <button onClick={clearError}>×</button>
-            </div>
-          )}
-          <ApprovalCard />
-          <AskUserCard />
-          <MessageInput />
-        </>
-      )}
+      {/* WCAG 1.3.1/4.1.2: primary content in a main landmark. The page needs
+          exactly one h1 (WCAG 2.4.6); it is visually-hidden so the visible
+          header title (dynamic conversation title) stays as-is. */}
+      <main className="app-main">
+        <h1 className="visually-hidden">Claude Free</h1>
+        {showSettings ? (
+          <SettingsPanel />
+        ) : showHistory ? (
+          <HistoryPanel />
+        ) : showRecordings ? (
+          <RecordingsPanel />
+        ) : (
+          <>
+            <Chat />
+            {error && (
+              <div className="error-bar">
+                <span>{error}</span>
+                <button onClick={clearError}>×</button>
+              </div>
+            )}
+            <ApprovalCard />
+            <AskUserCard />
+            <MessageInput />
+          </>
+        )}
+      </main>
     </div>
   );
 }
