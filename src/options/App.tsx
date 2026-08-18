@@ -40,8 +40,10 @@ export function App() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  // WCAG 1.3.1/4.1.2: main landmark wrapping the settings content (the page's
+  // h1 lives inside it, so the heading is part of the landmark too).
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 24px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', fontSize: 14, color: '#1a1a1a' }}>
+    <main style={{ maxWidth: 640, margin: '0 auto', padding: '32px 24px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', fontSize: 14, color: '#1a1a1a' }}>
       <a className="visually-hidden a11y-skip" href="#a11y-first-control">Skip to settings</a>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24, color: '#c96442' }}>Claude Free — Settings</h1>
 
@@ -123,11 +125,11 @@ export function App() {
 
       <button
         onClick={handleSave}
-        style={{ background: '#c96442', color: '#fff', border: 'none', padding: '9px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+        style={{ background: '#a14b26', color: '#fff', border: 'none', padding: '9px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
       >
         {saved ? '✓ Saved' : 'Save settings'}
       </button>
-    </div>
+    </main>
   );
 }
 

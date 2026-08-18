@@ -102,7 +102,7 @@ export function Header() {
 
   if (namingRecording) {
     return (
-      <div className="header header--naming">
+      <header className="header header--naming">
         <input
           className="recording-name-input"
           aria-label="Recording name"
@@ -114,23 +114,23 @@ export function Header() {
         />
         <button className="icon-btn recording-save-btn" onClick={handleSaveName} title="Save recording">✓</button>
         <button className="icon-btn" onClick={handleCancelName} title="Discard recording">✕</button>
-      </div>
+      </header>
     );
   }
 
   if (isAuxPanel) {
     return (
-      <div className="header">
+      <header className="header">
         <button className="icon-btn" onClick={() => { setShowSettings(false); setShowHistory(false); setShowRecordings(false); }} title="Back" aria-label="Back">
           <BackIcon />
         </button>
         <span className="header-title">{title}</span>
-      </div>
+      </header>
     );
   }
 
   return (
-    <div className="header">
+    <header className="header">
       <span className="header-title">{title}</span>
       <span className="header-provider">{providerLabel}</span>
       {settings.computerUseEnabled && (
@@ -155,6 +155,6 @@ export function Header() {
       <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings">
         <SettingsIcon />
       </button>
-    </div>
+    </header>
   );
 }
