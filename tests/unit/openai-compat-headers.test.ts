@@ -51,6 +51,20 @@ describe('PROVIDERS — tabi router preset', () => {
   });
 });
 
+describe('PROVIDERS — novarouter preset', () => {
+  it('points at the OpenAI-compatible Novarouter surface with the free Fable 5 default', () => {
+    const novarouter = PROVIDERS['novarouter'];
+    expect(novarouter).toBeDefined();
+    expect(novarouter.baseURL).toBe('https://novarouter.site/v1');
+    expect(novarouter.defaultModel).toBe('claude-fable-5');
+    expect(novarouter.supportsTools).toBe(true);
+    // Every Claude-family request maps to the free Fable 5 model.
+    for (const claudeId of ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5']) {
+      expect(novarouter.modelMap?.[claudeId]).toBe('claude-fable-5');
+    }
+  });
+});
+
 describe('createOpenAICompatibleFetch — extra header merge', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
