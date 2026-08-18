@@ -446,10 +446,11 @@ describe('streamWithRetry', () => {
     expect(customFetch).toHaveBeenCalledTimes(1);
   });
 
-  it('fails fast on 401/403 without retrying (bad key / out of credits)', async () => {
-    for (const status of ['401', '403']) {
+  it('fails fast on 400/401/403/404 without retrying (client errors never resolve on retry)', async () => {
+    const suffixes: Record<string, string> = { '400': 'Bad Request', '401': 'Unauthorized', '403': 'Forbidden', '404': 'Not Found' };
+    for (const status of ['400', '401', '403', '404']) {
       const customFetch = vi.fn().mockRejectedValueOnce(
-        new Error(`API error ${status}: ${status === '401' ? 'Unauthorized' : 'Forbidden'}`),
+        new Error(`API error ${status}: ${suffixes[status]}`),
       );
       const controller = new AbortController();
       const gen = streamWithRetry({}, customFetch as unknown as typeof fetch, controller.signal);
@@ -461,6 +462,27 @@ describe('streamWithRetry', () => {
       ).rejects.toThrow(new RegExp(status));
       expect(customFetch).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it('still retries retryable provider errors (429) — the 4xx fail-fast does not swallow them', async () => {
+    vi.useFakeTimers();
+    const { response } = makeFakeResponse({ chunks: [sseEvents([{ type: 'message_stop' }])] });
+    const customFetch = vi.fn()
+      .mockRejectedValueOnce(new Error('API error 429: {"error":{"message":"Provider 429: rate limited"}}'))
+      .mockResolvedValueOnce(response);
+    const controller = new AbortController();
+
+    const collected: unknown[] = [];
+    const consume = (async () => {
+      for await (const ev of streamWithRetry({}, customFetch as unknown as typeof fetch, controller.signal)) {
+        collected.push(ev);
+      }
+    })();
+    await vi.runAllTimersAsync();
+    await consume;
+
+    expect(collected).toEqual([{ type: 'message_stop' }]);
+    expect(customFetch).toHaveBeenCalledTimes(2);
   });
 
   it('throws the last error after exhausting all retry attempts', async () => {
@@ -637,6 +659,30 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
     await useStore.getState().sendMessage([{ type: 'text', text: 'hello' }]);
 
     expect(useStore.getState().error).toContain('Provider rejected the request (403)');
+    expect(useStore.getState().isStreaming).toBe(false);
+  });
+
+  it('surfaces a friendly message when the provider returns 400 (bad request)', async () => {
+    resetStore({});
+    customFetchMock.mockImplementationOnce(async () =>
+      makeFakeResponse({ ok: false, status: 400, statusText: 'Bad Request', errorText: '{"error":{"message":"Provider 400: unsupported parameter"}}' }).response,
+    );
+
+    await useStore.getState().sendMessage([{ type: 'text', text: 'hello' }]);
+
+    expect(useStore.getState().error).toContain('Provider error (400)');
+    expect(useStore.getState().isStreaming).toBe(false);
+  });
+
+  it('surfaces a friendly message when the provider returns 404 (model/endpoint misconfigured)', async () => {
+    resetStore({});
+    customFetchMock.mockImplementationOnce(async () =>
+      makeFakeResponse({ ok: false, status: 404, statusText: 'Not Found', errorText: '{"error":{"message":"Provider 404: model not found"}}' }).response,
+    );
+
+    await useStore.getState().sendMessage([{ type: 'text', text: 'hello' }]);
+
+    expect(useStore.getState().error).toContain('Provider returned 404');
     expect(useStore.getState().isStreaming).toBe(false);
   });
 
