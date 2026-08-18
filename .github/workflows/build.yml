@@ -102,6 +102,9 @@ jobs:
   # needs a virtual display on headless CI runners — hence xvfb-run.
   e2e:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
