@@ -4,7 +4,7 @@
 
 > A Chrome side panel powered by **any free AI provider** — Gemini, DeepSeek, Groq, OpenRouter, Ollama and more. Full browser computer use included. No Claude subscription required.
 
-[![Version](https://img.shields.io/badge/version-3.3.8-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases/tag/v3.3.8)
+[![Version](https://img.shields.io/badge/version-3.3.9-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases/tag/v3.3.9)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome)](https://developer.chrome.com/docs/extensions/mv3/)
 [![GitHub stars](https://img.shields.io/github/stars/staimoorulhassan/Claude-Free-Extension?style=social)](https://github.com/staimoorulhassan/Claude-Free-Extension)
@@ -178,6 +178,7 @@ Good first issues are labeled [`good first issue`](https://github.com/staimoorul
 
 | Version | Highlights |
 |---|---|
+| **v3.3.9** | Error-handling hardening — the agent loop fails fast on non-transient HTTP 4xx client errors (400/401/403/404) instead of retrying until the 10-minute timeout, with actionable messages for bad requests, bad keys, out-of-credits, and misconfigured models; plus WCAG 1.4.3 AA color-contrast fixes and landmark/heading structure across the side panel and options |
 | **v3.3.8** | Panel-open tab grouping (current tab + agent tabs in one "Claude Free" group) and a configurable max tool rounds setting |
 | **v3.3.7** | Tabi Router provider preset with wallet onboarding |
 | **v3.3.6** | Opik LLM Gateway support via per-provider extra headers |
