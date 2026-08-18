@@ -443,6 +443,9 @@ export async function* streamWithRetry(
 
       // Determine if retryable
       const isAbort = lastError.name === 'AbortError';
+      // 401/403 are non-transient (bad key / out of credits / model forbidden) —
+      // retrying just burns backoff time and spams the console. Never retry them.
+      const isAuthOrForbidden = /(?:API error|Provider) (401|403)\b/.test(msg);
       const isTimeout = msg.includes('timeout') || msg.includes('timed out');
       const isNetworkError = msg.includes('Failed to fetch') || msg.includes('network') || msg.includes('ERR_');
       const isRetryable = 
@@ -450,6 +453,7 @@ export async function* streamWithRetry(
         msg.includes('503') || msg.includes('504') || msg.includes('Provider') || isNetworkError || isTimeout;
       
       if (isAbort) throw e; // Never retry abort
+      if (isAuthOrForbidden) throw e; // 401/403 fail fast — retrying can't help
       if (attempt === maxAttempts - 1) throw e; // Last attempt, throw
       if (!isRetryable) throw e; // Non-retryable error, throw immediately
       
@@ -1139,6 +1143,8 @@ export const useStore = create<Store>((set, get) => ({
           display = 'Rate limit reached. Wait a moment then try again, or switch provider in Settings.';
         } else if (raw.includes('401') || raw.includes('Unauthorized') || raw.includes('Invalid API key')) {
           display = 'Invalid API key. Check your key in Settings.';
+        } else if (raw.includes('403') || raw.includes('Forbidden')) {
+          display = 'Provider rejected the request (403). Your API key may be out of credits or lost access to this model. Check the key and balance at the provider console, or switch provider in Settings.';
         }
         set({ error: display });
       }

@@ -446,6 +446,23 @@ describe('streamWithRetry', () => {
     expect(customFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('fails fast on 401/403 without retrying (bad key / out of credits)', async () => {
+    for (const status of ['401', '403']) {
+      const customFetch = vi.fn().mockRejectedValueOnce(
+        new Error(`API error ${status}: ${status === '401' ? 'Unauthorized' : 'Forbidden'}`),
+      );
+      const controller = new AbortController();
+      const gen = streamWithRetry({}, customFetch as unknown as typeof fetch, controller.signal);
+
+      await expect(
+        (async () => {
+          for await (const _ of gen) { /* noop */ }
+        })(),
+      ).rejects.toThrow(new RegExp(status));
+      expect(customFetch).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it('throws the last error after exhausting all retry attempts', async () => {
     vi.useFakeTimers();
     const customFetch = vi.fn().mockRejectedValue(new Error('500 Internal Server Error'));
@@ -609,6 +626,18 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
     expect(
       logSpy.mock.calls.some(c => String(c[0]).includes('[Agent Loop] Iteration 1, history length:')),
     ).toBe(true);
+  });
+
+  it('surfaces a friendly message when the provider returns 403 (out of credits / forbidden)', async () => {
+    resetStore({});
+    customFetchMock.mockImplementationOnce(async () =>
+      makeFakeResponse({ ok: false, status: 403, statusText: 'Forbidden', errorText: '{"error":{"message":"Provider 403: insufficient credits"}}' }).response,
+    );
+
+    await useStore.getState().sendMessage([{ type: 'text', text: 'hello' }]);
+
+    expect(useStore.getState().error).toContain('Provider rejected the request (403)');
+    expect(useStore.getState().isStreaming).toBe(false);
   });
 
   it('stops after 25 tool rounds and reports the corresponding error, logging in debug mode', async () => {
