@@ -41,7 +41,7 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
     enforces this. HTML is forced to LF via `.gitattributes` (`*.html eol=lf`)
     because vite preserves source line endings — Windows autocrlf must never
     smudge CRLF into the committed artifact.
-  - `npm test` — vitest (`src/**` + `tests/unit`, 128 tests) plus `node --test`
+  - `npm test` — vitest (`src/**` + `tests/unit`, 133 tests) plus `node --test`
     spec-conformance checks (52 tests).
   - `npx playwright test` — the e2e suite (`tests/e2e`) loads `dist/` as an
     unpacked MV3 extension (headed Chromium). Locally: `PLAYWRIGHT_CHANNEL`
@@ -51,18 +51,19 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   upload/attest; the `e2e` job installs the pinned bundled chromium
   (`npx playwright install --with-deps chromium`) and runs the full Playwright
   suite under `xvfb-run`. **Every PR is gated on all of:**  `npm test`
-  (128 vitest + 52 node), the full e2e suite (9 specs), the dist-sync guard
+  (133 vitest + 52 node), the full e2e suite (9 specs), the dist-sync guard
   (committed `dist/` must rebuild byte-identically), and the CRLF check
   (no committed file under `dist/` may contain a CR byte).
 
 ## Version picture
 
-- **Workspace:** v3.3.8 — a byte-identical copy of the CI-verified committed
-  `dist/` from `E:\claude-free-recon` at `54cd858` (all top-level files
+- **Workspace:** v3.3.9 — a byte-identical copy of the CI-verified committed
+  `dist/` from `E:\claude-free-recon` at `9f064b1` (all top-level files
   `cmp`-verified, `assets/` and `sounds/` directory-compared) — i.e. the same
-  build the v3.3.8 release zip contains (tab-grouping from PR #35, the max
-  tool rounds setting from PR #36, the tabi provider, and everything through
-  PR #38). On top of that build the workspace re-applies the **Opik bridge
+  build the v3.3.9 release zip contains (the 4xx fail-fast error handling
+  from PRs #40/#42, the WCAG 1.4.3 AA contrast + landmark fixes from PR
+  #41, and everything through PR #44). On top of that build the workspace
+  re-applies the **Opik bridge
   hand-edits**, which are not in the repo source and get clobbered by every
   wholesale refresh (restored from the backup after this refresh): the
   `<script src="/opik-client.js" defer>` tag in `sidepanel.html` and the
@@ -71,16 +72,17 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
   preserved in this directory, recoverable if ever needed:
   `dist-3.3.3-backup/` (the shipped v3.3.3 + hand-edits),
   `dist-pre-tabi-backup/` (the `57b91b0` copy — also recoverable from repo
-  commit `57b91b0`'s committed dist), `dist-pre-3.3.7-backup/` (the
-  `6d6c9d7` copy), and `dist-pre-3.3.8-backup/` (the v3.3.7 `f9b1136` copy +
-  opik hand-edits).
-- **`main`:** v3.3.8 — the real source tree, with PRs #13–#38 merged
-  (currently at `54cd858`). **Release v3.3.8 is published as Latest** with
-  `claude-free-extension-v3.3.8.zip` attached (built + attached by CI on the
-  `v3.3.8` tag), containing tab-grouping (PR #35), the max tool rounds
-  setting (PR #36), the README refresh (PR #37), and the tabi provider
-  (PR #30). The workspace above is byte-identical to this build (plus the
-  Opik bridge hand-edits):
+  commit `57b91b0`'s committed dist),  `dist-pre-3.3.7-backup/` (the
+  `6d6c9d7` copy), `dist-pre-3.3.8-backup/` (the v3.3.7 `f9b1136` copy +
+  opik hand-edits), and `dist-pre-3.3.9-backup/` (the v3.3.8 `54cd858` copy
+  + opik hand-edits).
+- **`main`:** v3.3.9 — the real source tree, with PRs #13–#44 merged
+  (currently at `9f064b1`). **Release v3.3.9 is published as Latest** with
+  `claude-free-extension-v3.3.9.zip` attached (built + attached by CI on the
+  `v3.3.9` tag), containing the 4xx fail-fast error handling (PRs #40/#42),
+  the WCAG 1.4.3 AA contrast + landmark fixes (PR #41), the README refresh
+  (PR #43), and the version bump (PR #44). The workspace above is
+  byte-identical to this build (plus the Opik bridge hand-edits):
 
 | PR | Change | Workspace delta it absorbs |
 |----|--------|---------------------------|
@@ -110,6 +112,11 @@ sharpens; do not re-litigate decisions recorded in ADRs (see `docs/adr/`).
 | #36 | configurable max tool rounds setting (default 25, slider 1–500 in sidepanel + options) replacing the hard-coded 25-round cap | — |
 | #37 | README refresh — version badge, tab-grouping + max-tool-rounds bullets, changelog rows | — |
 | #38 | version bump 3.3.7 → 3.3.8 (manifest + package + rebuilt dist/manifest) → release v3.3.8 published as Latest with dist.zip attached (tab-grouping + max tool rounds + README refresh) | — |
+| #40 | 401/403 fail-fast in the agent loop (`streamWithRetry` never retries non-transient client errors) + friendly 403 message (check key/balance) | — |
+| #41 | WCAG 1.4.3 AA color-contrast fixes (header-provider, model-mode toggle, saved-badge, options save button) + `<main>`/h1/`<header>` landmarks | — |
+| #42 | 400/404 fail-fast (real openai-compat 404 bodies were still retried via the "Provider" catch-all) + friendly 400/404 messages; 429/5xx/network stay retryable | — |
+| #43 | README refresh — version badge, v3.3.9 changelog row | — |
+| #44 | version bump 3.3.8 → 3.3.9 (manifest + package + rebuilt dist/manifest) → release v3.3.9 published as Latest with dist.zip attached | — |
 
 ## Open decision: the 20% security system prompt
 
