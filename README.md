@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🤖 Claude Free Extension
+# 🤖 Claude Free Extension — Free AI Browser Assistant with Computer Use
 
-> A Chrome side panel powered by **any free AI provider** — Gemini, DeepSeek, Groq, OpenRouter, Ollama and more. Full browser computer use included. No Claude subscription required.
+> A **free AI browser assistant** and Chrome side panel powered by **any free AI provider** — Gemini, DeepSeek, Groq, OpenRouter, Ollama and more. Full **browser automation** and computer use included. No Claude subscription required. Open-source, privacy-first, works offline with local models.
 
 [![Version](https://img.shields.io/badge/version-3.6.0-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
@@ -23,9 +23,9 @@
 
 ## ✨ What is Claude Free Extension?
 
-Claude Free Extension is a **Chrome side panel** that gives you a full-featured AI assistant on any webpage — without paying for a Claude subscription. It translates between Anthropic's message format and OpenAI-compatible APIs so you can plug in **Gemini, DeepSeek, Groq, Ollama, OpenRouter** — 16 built-in provider presets in total — with zero code changes.
+Claude Free Extension is a **free AI browser assistant** and Chrome side panel that gives you a full-featured AI coding assistant on any webpage — without paying for a Claude subscription. It translates between Anthropic's message format and OpenAI-compatible APIs so you can plug in **Gemini, DeepSeek, Groq, Ollama, OpenRouter** — 16 built-in provider presets in total — with zero code changes.
 
-Unlike other AI extensions, it ships with **browser computer use** — the AI can literally see your screen, move the cursor, click buttons, fill forms, and navigate pages in real time using the Chrome DevTools Protocol.
+Unlike other AI browser extensions, it ships with **browser automation and computer use** — the AI can literally see your screen, move the cursor, click buttons, fill forms, and navigate pages in real time using the Chrome DevTools Protocol. Voice input lets you talk to the assistant, and group confinement keeps automated work isolated from your browsing.
 
 ---
 
