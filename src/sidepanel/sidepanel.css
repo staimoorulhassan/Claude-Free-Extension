@@ -162,6 +162,12 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .input-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .attach-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: var(--text3); border-radius: 6px; }
 .attach-btn:hover { background: var(--bg3); color: var(--text2); }
+.mic-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: var(--text3); border-radius: 6px; }
+.mic-btn:hover:not(:disabled) { background: var(--bg3); color: var(--text2); }
+.mic-btn:disabled { opacity: .4; cursor: not-allowed; }
+.mic-btn--listening { color: #fff; background: #c0392b; animation: mic-pulse 1.2s ease-in-out infinite; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, .5); } 50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, 0); } }
+.voice-hint { font-size: 11px; color: var(--text3); padding: 4px 12px 2px; min-height: 0; }
 .send-btn { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; flex-shrink: 0; transition: background var(--dur-fast), opacity var(--dur-fast); }
 .send-btn:hover:not(:disabled) { background: var(--accent-h); }
 .send-btn:disabled { opacity: .4; cursor: not-allowed; }

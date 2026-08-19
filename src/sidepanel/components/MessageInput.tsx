@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, type KeyboardEvent, type ChangeEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, type KeyboardEvent, type ChangeEvent } from 'react';
 import { useStore } from '../store';
+import { appendTranscription, getRecognitionCtor, type RecognitionEngine } from '../voice';
 import type { ContentBlock, ImageBlock } from '@/lib/types';
 
 function SendIcon() {
@@ -22,6 +23,14 @@ function PaperclipIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={15} height={15}>
       <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+    </svg>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" width={14} height={14} aria-hidden="true">
+      <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
     </svg>
   );
 }
@@ -58,6 +67,61 @@ export function MessageInput() {
   const setAttachedRecording = useStore(s => s.setAttachedRecording);
   const setShowRecordings = useStore(s => s.setShowRecordings);
   const attachedRecording = recordings.find(r => r.id === attachedRecordingId);
+
+  const voiceInputLanguage = useStore(s => s.settings.voiceInputLanguage);
+  const [listening, setListening] = useState(false);
+  const [voiceHint, setVoiceHint] = useState('');
+  const recognitionRef = useRef<RecognitionEngine | null>(null);
+  const textRef = useRef(text);
+  textRef.current = text;
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListening(false);
+  }, []);
+
+  const startListening = useCallback(() => {
+    const Ctor = getRecognitionCtor();
+    if (!Ctor) { setVoiceHint('Voice input is not supported in this browser'); return; }
+    setVoiceHint('');
+    const rec = new Ctor();
+    rec.lang = voiceInputLanguage;
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      const next = e.final || e.interim;
+      if (next) setText(prev => appendTranscription(prev.trimEnd(), next));
+      setVoiceHint('');
+    };
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setVoiceHint('Microphone access denied — allow it in the browser prompt');
+      } else if (e.error === 'no-speech') {
+        setVoiceHint('No speech detected');
+      } else {
+        setVoiceHint('Voice input unavailable');
+      }
+    };
+    rec.onend = () => {
+      recognitionRef.current = null;
+      setListening(false);
+    };
+    recognitionRef.current = rec;
+    setListening(true);
+    rec.start();
+  }, [voiceInputLanguage]);
+
+  const toggleVoice = () => {
+    if (listening) stopListening();
+    else startListening();
+  };
+
+  useEffect(() => {
+    if (!voiceHint) return;
+    const t = setTimeout(() => setVoiceHint(''), 4000);
+    return () => clearTimeout(t);
+  }, [voiceHint]);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -153,6 +217,16 @@ export function MessageInput() {
           disabled={isStreaming}
         />
         <div className="input-actions">
+          <button
+            className={`mic-btn${listening ? ' mic-btn--listening' : ''}`}
+            onClick={toggleVoice}
+            disabled={isStreaming}
+            title={listening ? 'Stop listening' : 'Voice input'}
+            aria-label={listening ? 'Stop listening' : 'Voice input'}
+            aria-pressed={listening}
+          >
+            <MicIcon />
+          </button>
           <button className="attach-btn" onClick={() => fileInputRef.current?.click()} title="Attach image" aria-label="Attach image">
             <PaperclipIcon />
           </button>
@@ -167,6 +241,7 @@ export function MessageInput() {
           )}
         </div>
       </div>
+      {voiceHint && <div className="voice-hint" role="status">{voiceHint}</div>}
       <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleFileSelect} />
     </div>
   );
