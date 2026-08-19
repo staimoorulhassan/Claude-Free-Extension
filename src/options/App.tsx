@@ -1,4 +1,4 @@
-import { cloneElement, useEffect, useId, useState } from 'react';
+import { Children, cloneElement, useEffect, useId, useState } from 'react';
 import { getSettings, saveSettings } from '@/lib/storage';
 import { PROVIDERS, resolveContextWindow, parseExtraHeaders } from '@/lib/openai-compat';
 import type { AppSettings } from '@/lib/types';
@@ -104,6 +104,15 @@ export function App() {
           <Field label={`Max tool rounds: ${settings.maxToolRounds}`}>
             <input type="range" min={1} max={500} step={1} value={settings.maxToolRounds} onChange={e => update({ maxToolRounds: Number(e.target.value) })} style={{ accentColor: '#c96442' }} />
           </Field>
+          <Field label="Voice input language">
+            <input
+              type="text"
+              value={settings.voiceInputLanguage}
+              onChange={e => update({ voiceInputLanguage: e.target.value })}
+              placeholder="en-US"
+            />
+            <p className="field-hint">BCP-47 code used by speech-to-text (e.g. en-US, en-GB, ur-PK, ar-SA)</p>
+          </Field>
         </div>
       </section>
 
@@ -135,17 +144,20 @@ export function App() {
   );
 }
 
-function Field({ label, children, controlId }: { label: string; children: React.ReactElement; controlId?: string }) {
+function Field({ label, children, controlId }: { label: string; children: React.ReactNode; controlId?: string }) {
   // Associate the label with the control (WCAG 3.3.2): generate a stable id and
   // wire label[htmlFor] ↔ control[id]. controlId lets a caller pin a specific id
-  // (used by the skip link's target).
+  // (used by the skip link's target). Additional children (e.g. a field-hint)
+  // are rendered as-is after the control.
   const autoId = useId();
   const id = controlId ?? autoId;
+  const [first, ...rest] = Children.toArray(children);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <label htmlFor={id} style={{ fontSize: 13, color: '#6b6860' }}>{label}</label>
       <div style={{ display: 'contents' }}>
-        {cloneElement(children, { id })}
+        {cloneElement(first as React.ReactElement, { id })}
+        {rest}
       </div>
     </div>
   );

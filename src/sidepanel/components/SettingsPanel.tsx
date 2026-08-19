@@ -395,6 +395,21 @@ export function SettingsPanel() {
           </div>
 
           <div className="toggle-row">
+            <label>
+              Voice input language
+              <span className="toggle-hint">BCP-47 code used by speech-to-text (e.g. en-US, en-GB, ur-PK, ar-SA)</span>
+            </label>
+            <input
+              type="text"
+              className="settings-input"
+              aria-label="Voice input language"
+              value={settings.voiceInputLanguage}
+              onChange={e => set({ voiceInputLanguage: e.target.value })}
+              style={{ width: 90 }}
+            />
+          </div>
+
+          <div className="toggle-row">
             <label>Use Steel stealth browser</label>
             <label className="toggle">
               <input
