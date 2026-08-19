@@ -238,6 +238,8 @@ export interface AppSettings {
    * group — it hides (panel closes, agent stops) when a tab outside the group
    * is selected and shuts down when the group is closed. */
   groupConfinement: boolean;
+  /** Voice input (Web Speech API) recognition language, BCP-47 code. */
+  voiceInputLanguage: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -263,6 +265,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enableMemory: true,
   maxMemoryEntries: 100,
   groupConfinement: true,
+  voiceInputLanguage: 'en-US',
 };
 
 export interface Conversation {
