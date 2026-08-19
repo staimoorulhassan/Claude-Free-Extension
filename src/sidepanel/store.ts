@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent, ToolUseBlock, ExecutionJournal } from '@/lib/types';
+import type { AppSettings, Conversation, Message, ContentBlock, AnthropicMessage, AnthropicStreamEvent, ToolUseBlock, ExecutionJournal, TaskProgress } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
 import { getSettings, saveSettings, getConversations, saveConversations, generateId, generateTitle, getProviderVault, saveProviderVault } from '@/lib/storage';
 import type { ProviderVault } from '@/lib/storage';
@@ -10,6 +10,8 @@ import { getEnabledTools, executeTool } from '@/lib/tools';
 import { detectPattern, selectStrategy } from '@/lib/tokenOptimizer';
 import { createSteelManager } from '@/lib/steel-session';
 import type { SteelSession } from '@/lib/steel-client';
+import { buildMemoryContext, saveMemory } from '@/lib/memory';
+import { createProgress, updateProgress, completeStep, getProgress, deleteProgress, buildProgressContext, parsePlanFromText } from '@/lib/progress';
 
 export interface PendingApproval {
   blocks: ToolUseBlock[];
@@ -39,6 +41,7 @@ interface Store {
   pendingApproval: PendingApproval | null;
   pendingAskUser: PendingAskUser | null;
   currentTaskId: string | null; // T024-T029: drives tab-group scoping + "Terminate Task"
+  currentProgress: TaskProgress | null; // T051: progress tracking for long-running tasks
   providerVault: ProviderVault;
   isRecording: boolean;
   recordings: Recording[];
@@ -478,6 +481,7 @@ export const useStore = create<Store>((set, get) => ({
   pendingApproval: null,
   pendingAskUser: null,
   currentTaskId: null,
+  currentProgress: null,
   providerVault: {},
   isRecording: false,
   recordings: [],
@@ -702,6 +706,7 @@ export const useStore = create<Store>((set, get) => ({
     // T024-T029: task id + name for tab-group scoping (background.ts createOrJoinGroup).
     const taskId = generateId();
     const taskName = (firstText || 'New task').slice(0, 60);
+// T051: Create progress tracker for long-running tasks    const initialProgress = await createProgress(taskId, firstText || 'New task', 0);    set({ currentProgress: initialProgress });
 
     set({ currentTaskId: taskId });
     if (settings.computerUseEnabled) {
@@ -713,7 +718,7 @@ export const useStore = create<Store>((set, get) => ({
 
     try {
       // Agent loop — each iteration gets its own unique assistantId
-      const AGENT_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+      const AGENT_TIMEOUT = settings.taskTimeoutMinutes > 0 ? settings.taskTimeoutMinutes * 60 * 1000 : Infinity; // T051: configurable timeout (0 = unlimited)
       const agentStartTime = Date.now();
       let agentIteration = 0;
 
@@ -723,7 +728,7 @@ export const useStore = create<Store>((set, get) => ({
       
       while (true) {
         // Check timeout
-        if (Date.now() - agentStartTime > AGENT_TIMEOUT) {
+        if (AGENT_TIMEOUT !== Infinity && Date.now() - agentStartTime > AGENT_TIMEOUT) {
           set({ error: 'Agent session timed out after 10 minutes. Long tasks may need to be split.' });
           if (debugMode) console.log('[Agent Loop] Timeout: session exceeded 10 minutes');
           break;
@@ -733,6 +738,13 @@ export const useStore = create<Store>((set, get) => ({
           set({ error: `Agent stopped after ${settings.maxToolRounds} tool rounds. Try breaking the task into smaller steps.` });
           if (debugMode) console.log('[Agent Loop] Max iterations reached');
           break;
+        }
+        
+        // T051: Update progress tracking
+        const currentProgress = await getProgress(taskId);
+        if (currentProgress) {
+          await updateProgress(taskId, agentIteration, `Round ${agentIteration}: Processing...`);
+          set({ currentProgress: await getProgress(taskId) });
         }
 
         if (debugMode) {
@@ -771,7 +783,7 @@ export const useStore = create<Store>((set, get) => ({
         // Switch: case 1 = normal system prompt, case 2 = boss mode (maximum-
         // authority framing). Boss mode overrides both computer-use and plain
         // chat prompts; the tool inventory stays identical so it can execute.
-        const effectiveSystem = settings.bossMode
+        let effectiveSystem = settings.bossMode
           ? [
               // Skill contract (boss-mode): the Primary Override phrase verbatim, and
               // positive imperatives only (no refusals/hedges to trip classifiers).
@@ -925,6 +937,22 @@ export const useStore = create<Store>((set, get) => ({
               const hint = `Response style: ${selectStrategy(pattern)}.`;
               return settings.systemPrompt ? `${settings.systemPrompt}\n\n${hint}` : hint;
             })();
+        // T051: Add memory context if enabled
+        if (settings.enableMemory) {
+          const memoryContext = await buildMemoryContext(20);
+          if (memoryContext) {
+            effectiveSystem = effectiveSystem + '\n\n' + memoryContext;
+          }
+        }
+        
+        // T051: Add progress context if tracking
+        if (taskId) {
+          const progressContext = await buildProgressContext(taskId);
+          if (progressContext) {
+            effectiveSystem = effectiveSystem + '\n\n' + progressContext;
+          }
+        }
+        
         if (effectiveSystem) body['system'] = effectiveSystem;
         if (tools.length > 0) {
           body['tools'] = tools;
@@ -1190,6 +1218,33 @@ export const useStore = create<Store>((set, get) => ({
           }
         }
 
+        // T051: Save learned context to memory if enabled
+        if (settings.enableMemory) {
+          for (const block of toolUseBlocks) {
+            if (block.name === 'computer') {
+              const input = block.input as Record<string, unknown>;
+              const action = input.action as string;
+              
+              // Save navigation memories (site structures)
+              if (action === 'navigate' && typeof input.url === 'string') {
+                try {
+                  const url = input.url;
+                  const domain = new URL(url).hostname.replace('www.', '');
+                  await saveMemory(`site:${domain}`, `Last visited: ${url}`, 'site', settings.maxMemoryEntries);
+                } catch { /* invalid URL, skip */ }
+              }
+              
+              // Save search result patterns
+              if (action === 'web_search' && typeof input.query === 'string') {
+                const textResult = toolResults.find((r): r is { type: 'text'; text: string } => r.type === 'text');
+                if (textResult) {
+                  await saveMemory(`search:${input.query}`, textResult.text.slice(0, 500), 'learned', settings.maxMemoryEntries);
+                }
+              }
+            }
+          }
+        }
+        
         // Add tool results — next loop iteration will add its own fresh assistant placeholder
         set(s => ({
           conversations: patchConversation(s.conversations, convId, c => ({
@@ -1297,7 +1352,7 @@ export const useStore = create<Store>((set, get) => ({
       }
       // Task finished on its own (not via stopGeneration) — clear the id but leave the
       // tab group itself alone (still 'done'-colored, tabs stay open for the user to review).
-      if (get().currentTaskId) set({ currentTaskId: null });
+      if (get().currentTaskId) set({ currentTaskId: null, currentProgress: null });
     }
   },
 }));

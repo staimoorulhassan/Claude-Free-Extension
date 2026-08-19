@@ -106,6 +106,41 @@ export interface ProviderConfig {
 
 // ─── Agent engine types (spec 001-claude-free-extension) ──────────────────────
 
+
+/** Persistent memory entry for cross-session context retention. */
+export interface MemoryEntry {
+  id: string;
+  key: string;
+  value: string;
+  category: 'task' | 'site' | 'user_pref' | 'learned';
+  createdAt: number;
+  updatedAt: number;
+  /** How many times this memory was accessed (for relevance scoring). */
+  accessCount: number;
+}
+
+/** Progress tracking for long-running tasks. */
+export interface TaskProgress {
+  taskId: string;
+  /** Current step number (1-indexed). */
+  currentStep: number;
+  /** Total steps in the plan. */
+  totalSteps: number;
+  /** Description of the current step. */
+  currentStepDescription: string;
+  /** Overall task description/plan. */
+  planSummary: string;
+  /** Timestamps for each step completion. */
+  stepHistory: Array<{
+    step: number;
+    description: string;
+    completedAt: number;
+    durationMs: number;
+  }>;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /**
  * Persisted to chrome.storage.local under key `journal:<taskId>` after every completed
  * tool round, so a task survives MV3 service-worker termination/restart.
@@ -193,6 +228,12 @@ export interface AppSettings {
   theme: 'auto' | 'light' | 'dark';
   useSteel?: boolean;
   steel?: SteelConfig;
+  /** Task timeout in minutes. 0 = no timeout (for long-running projects). Default 10. */
+  taskTimeoutMinutes: number;
+  /** Enable cross-session memory persistence for learned context. */
+  enableMemory: boolean;
+  /** Maximum number of memory entries to persist. */
+  maxMemoryEntries: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -214,6 +255,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     solveCaptcha: true,
     region: 'us-east-1',
   },
+  taskTimeoutMinutes: 10,
+  enableMemory: true,
+  maxMemoryEntries: 100,
 };
 
 export interface Conversation {

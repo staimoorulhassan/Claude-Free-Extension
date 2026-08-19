@@ -31,6 +31,21 @@ vi.mock('@/lib/storage', async (importOriginal) => {
   return { ...actual, saveConversations: vi.fn(async () => {}) };
 });
 
+vi.mock('@/lib/memory', () => ({
+  buildMemoryContext: vi.fn(async () => ''),
+  saveMemory: vi.fn(async () => ({ id: '1', key: 'test', value: 'test', category: 'learned', createdAt: Date.now(), updatedAt: Date.now(), accessCount: 1 })),
+}));
+
+vi.mock('@/lib/progress', () => ({
+  createProgress: vi.fn(async () => ({ taskId: '1', currentStep: 0, totalSteps: 0, currentStepDescription: 'Planning...', planSummary: '', stepHistory: [], createdAt: Date.now(), updatedAt: Date.now() })),
+  updateProgress: vi.fn(async () => null),
+  completeStep: vi.fn(async () => null),
+  getProgress: vi.fn(async () => null),
+  deleteProgress: vi.fn(async () => {}),
+  buildProgressContext: vi.fn(async () => ''),
+  parsePlanFromText: vi.fn(() => null),
+}));
+
 import { compressForApi, streamMessages, streamWithRetry, useStore } from './store';
 
 // ── Test helpers ─────────────────────────────────────────────────────────────────
@@ -566,6 +581,13 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
       chrome: {
         runtime: {
           sendMessage: vi.fn(() => Promise.resolve()),
+        },
+        storage: {
+          local: {
+            get: vi.fn(() => Promise.resolve({})),
+            set: vi.fn(() => Promise.resolve()),
+            remove: vi.fn(() => Promise.resolve()),
+          },
         },
       },
     });

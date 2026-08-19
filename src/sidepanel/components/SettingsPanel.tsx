@@ -297,6 +297,19 @@ export function SettingsPanel() {
               onChange={e => set({ maxToolRounds: Number(e.target.value) })}
             />
           </div>
+          <div className="field">
+            <label>Task timeout: {settings.taskTimeoutMinutes === 0 ? 'Unlimited' : `${settings.taskTimeoutMinutes} min`}</label>
+            <input
+              type="range"
+              aria-label="Task timeout in minutes"
+              min={0}
+              max={120}
+              step={5}
+              value={settings.taskTimeoutMinutes}
+              onChange={e => set({ taskTimeoutMinutes: Number(e.target.value) })}
+            />
+            <span className="toggle-hint">0 = no timeout (for long-running projects)</span>
+          </div>
         </div>
       </div>
 
@@ -344,6 +357,22 @@ export function SettingsPanel() {
                 aria-label="Boss mode"
                 checked={settings.bossMode ?? false}
                 onChange={e => set({ bossMode: e.target.checked })}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+
+          <div className="toggle-row">
+            <label>
+              Cross-session memory
+              <span className="toggle-hint">Remember site structures and learned context across sessions</span>
+            </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                aria-label="Cross-session memory"
+                checked={settings.enableMemory ?? true}
+                onChange={e => set({ enableMemory: e.target.checked })}
               />
               <span className="toggle-slider" />
             </label>
