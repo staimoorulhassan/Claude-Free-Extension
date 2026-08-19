@@ -4,7 +4,7 @@
 
 > A Chrome side panel powered by **any free AI provider** — Gemini, DeepSeek, Groq, OpenRouter, Ollama and more. Full browser computer use included. No Claude subscription required.
 
-[![Version](https://img.shields.io/badge/version-3.4.1-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases)
+[![Version](https://img.shields.io/badge/version-3.5.0-blue.svg)](https://github.com/staimoorulhassan/Claude-Free-Extension/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome)](https://developer.chrome.com/docs/extensions/mv3/)
 [![GitHub stars](https://img.shields.io/github/stars/staimoorulhassan/Claude-Free-Extension?style=social)](https://github.com/staimoorulhassan/Claude-Free-Extension)
@@ -180,6 +180,7 @@ Good first issues are labeled [`good first issue`](https://github.com/staimoorul
 
 | Version | Highlights |
 |---|---|
+| **v3.5.0** | Group confinement — the extension only works inside its "Claude Free" tab group: selecting a tab outside the group hides the extension (panel closes, agent stops) and closing the group shuts it down; the computer tool refuses to act on any tab outside the group, so the agent never sees what happens outside it |
 | **v3.4.1** | Structured planning flow — the agent plans first and asks MCQ-style clarifying questions (with a self-write option) before executing; long-running task support — configurable task timeout (0–120 min), cross-session memory persistence, and step/total progress reporting; plus a fix that keeps the agent loop running past tool calls when the provider emits an `end_turn` stop reason |
 | **v3.4.0** | Version change (no feature release) — the extension now reports 3.4.0 |
 | **v3.3.10** | Novarouter provider preset with the free lifetime Claude Fable 5 (1M context, `billed: false` — no subscription), available to everyone in Settings; plus Boss mode — a visible toggle that switches the system prompt to the maximum-authority profile and turns the agent glow red while working |
