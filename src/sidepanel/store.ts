@@ -42,6 +42,10 @@ interface Store {
   pendingAskUser: PendingAskUser | null;
   currentTaskId: string | null; // T024-T029: drives tab-group scoping + "Terminate Task"
   currentProgress: TaskProgress | null; // T051: progress tracking for long-running tasks
+  /** Group confinement (v3.4.2): locked while the user is outside the extension
+   * tab group — the panel shows a lock screen and the agent is stopped. */
+  confinementLocked: boolean;
+  confinementReason: 'hide' | 'close' | null;
   providerVault: ProviderVault;
   isRecording: boolean;
   recordings: Recording[];
@@ -56,6 +60,8 @@ interface Store {
   deleteConversation: (id: string) => void;
   sendMessage: (userContent: ContentBlock[]) => Promise<void>;
   stopGeneration: () => void;
+  handleConfinement: (mode: 'hide' | 'close') => void;
+  unlockConfinement: () => void;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
   setShowSettings: (v: boolean) => void;
   setShowHistory: (v: boolean) => void;
@@ -482,6 +488,8 @@ export const useStore = create<Store>((set, get) => ({
   pendingAskUser: null,
   currentTaskId: null,
   currentProgress: null,
+  confinementLocked: false,
+  confinementReason: null,
   providerVault: {},
   isRecording: false,
   recordings: [],
@@ -502,6 +510,12 @@ export const useStore = create<Store>((set, get) => ({
     set({ settings, conversations, recordings, providerVault });
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg.type === 'STOP_GENERATION') get().stopGeneration();
+      // Group confinement (v3.4.2): background.ts hid the extension because the
+      // user left the tab group, or shut it down because the group was closed.
+      if (msg.type === 'CONFINEMENT_CHANGED') {
+        if (msg.mode === 'unlock') get().unlockConfinement();
+        else get().handleConfinement(msg.mode as 'hide' | 'close');
+      }
       // T038/T039: background.ts found a journal on service-worker restart. Full
       // autonomous resume of the LLM loop isn't implemented in this pass (see
       // tasks.md T035) — surface it so the user knows their conversation state was
@@ -511,6 +525,18 @@ export const useStore = create<Store>((set, get) => ({
       }
       if (msg.type === 'TASK_ORPHANED') {
         set({ error: `A previous task could not be resumed (its tab was closed) and was marked orphaned.` });
+      }
+    });
+    // Ask the background whether confinement is currently locking the panel
+    // (the user may have opened the panel while outside the tab group).
+    chrome.runtime.sendMessage({ type: 'GET_CONFINEMENT_STATE' }, (resp) => {
+      if (resp && typeof resp === 'object' && 'locked' in resp) {
+        const state = resp as { locked: boolean };
+        if (state.locked) {
+          set({ confinementLocked: true, confinementReason: 'hide' });
+        } else {
+          set({ confinementLocked: false, confinementReason: null });
+        }
       }
     });
   },
@@ -562,6 +588,30 @@ export const useStore = create<Store>((set, get) => ({
     }
     set({ isStreaming: false, abortController: null, pendingApproval: null, pendingAskUser: null, currentTaskId: null });
   },
+
+  // Group confinement (v3.4.2): background.ts caught the user leaving the
+  // extension's tab group. 'hide' stops the agent but leaves the task's tabs
+  // open for review; 'close' (group removed) also terminates the task's tabs.
+  handleConfinement: (mode) => {
+    get().abortController?.abort();
+    get().pendingApproval?.resolve('reject');
+    get().pendingAskUser?.resolve('');
+    const { currentTaskId } = get();
+    if (mode === 'close' && currentTaskId) {
+      chrome.runtime.sendMessage({ type: 'TAB_GROUP_TERMINATE', taskId: currentTaskId }).catch(() => {});
+    }
+    set({
+      isStreaming: false,
+      abortController: null,
+      pendingApproval: null,
+      pendingAskUser: null,
+      currentTaskId: null,
+      confinementLocked: true,
+      confinementReason: mode,
+    });
+  },
+
+  unlockConfinement: () => set({ confinementLocked: false, confinementReason: null }),
 
   approvePending: (correction?: string) => {
     const { pendingApproval } = get();

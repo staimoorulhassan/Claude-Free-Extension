@@ -24,6 +24,8 @@ export function App() {
   const settings = useStore(s => s.settings);
   const error = useStore(s => s.error);
   const clearError = useStore(s => s.clearError);
+  const confinementLocked = useStore(s => s.confinementLocked);
+  const confinementReason = useStore(s => s.confinementReason);
 
   useEffect(() => { init(); }, [init]);
 
@@ -59,16 +61,33 @@ export function App() {
           <RecordingsPanel />
         ) : (
           <>
-            <Chat />
-            {error && (
-              <div className="error-bar">
-                <span>{error}</span>
-                <button onClick={clearError}>×</button>
+            {confinementLocked ? (
+              <div className="confinement-lock" role="status">
+                <h2>
+                  {confinementReason === 'close'
+                    ? 'Claude Free group closed'
+                    : 'Outside the Claude Free group'}
+                </h2>
+                <p>
+                  {confinementReason === 'close'
+                    ? 'The extension shut down because its tab group was closed. Select a web tab and open the panel again to start a fresh group.'
+                    : 'The extension only works inside its "Claude Free" tab group. Select a tab in the group and reopen the panel to continue.'}
+                </p>
               </div>
+            ) : (
+              <>
+                <Chat />
+                {error && (
+                  <div className="error-bar">
+                    <span>{error}</span>
+                    <button onClick={clearError}>×</button>
+                  </div>
+                )}
+                <ApprovalCard />
+                <AskUserCard />
+                <MessageInput />
+              </>
             )}
-            <ApprovalCard />
-            <AskUserCard />
-            <MessageInput />
           </>
         )}
       </main>

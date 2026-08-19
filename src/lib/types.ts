@@ -234,6 +234,10 @@ export interface AppSettings {
   enableMemory: boolean;
   /** Maximum number of memory entries to persist. */
   maxMemoryEntries: number;
+  /** Group confinement: the extension only works inside its "Claude Free" tab
+   * group — it hides (panel closes, agent stops) when a tab outside the group
+   * is selected and shuts down when the group is closed. */
+  groupConfinement: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -258,6 +262,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   taskTimeoutMinutes: 10,
   enableMemory: true,
   maxMemoryEntries: 100,
+  groupConfinement: true,
 };
 
 export interface Conversation {

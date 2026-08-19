@@ -827,3 +827,109 @@ describe('useStore.sendMessage — agent loop timeout & debug logging', () => {
     expect(useStore.getState().error).toBeNull();
   });
 });
+
+describe('useStore — group confinement (v3.4.2)', () => {
+  let sendMessageMock: ReturnType<typeof vi.fn>;
+  let onMessageListener: (msg: unknown) => void;
+
+  beforeEach(() => {
+    sendMessageMock = vi.fn((msg: unknown, cb?: (r: unknown) => void) => {
+      if (cb && (msg as { type?: string }).type === 'GET_CONFINEMENT_STATE') {
+        cb({ enabled: true, locked: true, groupId: 3, inside: false });
+      }
+      return Promise.resolve();
+    });
+    onMessageListener = vi.fn();
+    Object.assign(globalThis, {
+      chrome: {
+        runtime: {
+          sendMessage: sendMessageMock,
+          onMessage: { addListener: vi.fn((fn: (m: unknown) => void) => { onMessageListener = fn; }) },
+        },
+        storage: {
+          local: {
+            get: vi.fn(() => Promise.resolve({})),
+            set: vi.fn(() => Promise.resolve()),
+            remove: vi.fn(() => Promise.resolve()),
+          },
+          sync: {
+            get: vi.fn(() => Promise.resolve({})),
+          },
+        },
+      },
+    });
+    useStore.setState({
+      conversations: [],
+      activeConversationId: null,
+      settings: { ...DEFAULT_SETTINGS, computerUseEnabled: false, requireApproval: false } as unknown as AppSettings,
+      isStreaming: false,
+      error: null,
+      abortController: null,
+      pendingApproval: null,
+      pendingAskUser: null,
+      currentTaskId: null,
+      currentProgress: null,
+      confinementLocked: false,
+      confinementReason: null,
+      recordings: [],
+      attachedRecordingId: null,
+      steelSession: null,
+    });
+    customFetchMock.mockReset();
+    executeToolMock.mockReset();
+    getEnabledToolsMock.mockReset().mockReturnValue([]);
+  });
+
+  afterEach(() => {
+    delete (globalThis as { chrome?: unknown }).chrome;
+    vi.restoreAllMocks();
+  });
+
+  it('locks the panel on hide without terminating the task tabs', () => {
+    useStore.setState({ currentTaskId: 'task-1', isStreaming: true, abortController: new AbortController() });
+    useStore.getState().handleConfinement('hide');
+    const s = useStore.getState();
+    expect(s.confinementLocked).toBe(true);
+    expect(s.confinementReason).toBe('hide');
+    expect(s.isStreaming).toBe(false);
+    expect(s.currentTaskId).toBeNull();
+    expect(sendMessageMock).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'TAB_GROUP_TERMINATE' }));
+  });
+
+  it('closes the extension on group removal: terminates the task tabs too', () => {
+    useStore.setState({ currentTaskId: 'task-1' });
+    useStore.getState().handleConfinement('close');
+    const s = useStore.getState();
+    expect(s.confinementLocked).toBe(true);
+    expect(s.confinementReason).toBe('close');
+    expect(s.currentTaskId).toBeNull();
+    expect(sendMessageMock).toHaveBeenCalledWith({ type: 'TAB_GROUP_TERMINATE', taskId: 'task-1' });
+  });
+
+  it('unlocks when the user returns to the group', () => {
+    useStore.setState({ confinementLocked: true, confinementReason: 'hide' });
+    useStore.getState().unlockConfinement();
+    expect(useStore.getState().confinementLocked).toBe(false);
+    expect(useStore.getState().confinementReason).toBeNull();
+  });
+
+  it('applies CONFINEMENT_CHANGED messages from the background', async () => {
+    useStore.setState({ currentTaskId: 'task-2' });
+    await useStore.getState().init();
+    expect(onMessageListener).toBeDefined();
+    (onMessageListener as unknown as (m: unknown) => void)({ type: 'CONFINEMENT_CHANGED', mode: 'close' });
+    expect(useStore.getState().confinementLocked).toBe(true);
+    expect(useStore.getState().confinementReason).toBe('close');
+    expect(sendMessageMock).toHaveBeenCalledWith({ type: 'TAB_GROUP_TERMINATE', taskId: 'task-2' });
+
+    (onMessageListener as unknown as (m: unknown) => void)({ type: 'CONFINEMENT_CHANGED', mode: 'unlock' });
+    expect(useStore.getState().confinementLocked).toBe(false);
+  });
+
+  it('reports the locked state when the panel opens while outside the group', async () => {
+    await useStore.getState().init();
+    expect(sendMessageMock).toHaveBeenCalledWith({ type: 'GET_CONFINEMENT_STATE' }, expect.any(Function));
+    expect(useStore.getState().confinementLocked).toBe(true);
+    expect(useStore.getState().confinementReason).toBe('hide');
+  });
+});

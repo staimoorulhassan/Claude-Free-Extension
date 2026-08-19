@@ -3,7 +3,11 @@
  * and CDP-based computer use execution.
  */
 
-import { createOrJoinGroup, setGroupState, getGroupId, forgetGroup, ensureExtensionGroup, getExtensionGroupId } from './lib/tabGroups';
+import {
+  createOrJoinGroup, setGroupState, getGroupId, forgetGroup, ensureExtensionGroup,
+  getExtensionGroupId, isExtensionGroupId, isExtensionTrackedGroup,
+  isTabInExtensionGroup, clearExtensionGroup,
+} from './lib/tabGroups';
 import {
   newJournal, writeJournal, readJournal, completeJournal, abortJournal,
   addTaskTab, removeTaskTab, getTaskTabs,
@@ -13,7 +17,7 @@ import {
   searchWeb, discoverSite, formatDiscoveredSite, summarizeDiscoveredSite,
   fetchPageAsText, fetchSitemapUrls,
 } from './lib/webResearch';
-import type { ExecutionJournal } from './lib/types';
+import type { ExecutionJournal, AppSettings } from './lib/types';
 
 // ── Offscreen keepalive lifecycle (T033/T034) ────────────────────────────────────
 // Created lazily on the first active task, closed once no journal is in_progress —
@@ -119,6 +123,89 @@ chrome.commands.onCommand.addListener(async (command) => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 });
+
+// ── Group confinement (v3.4.2) ────────────────────────────────────────────────
+// When enabled, the extension only works inside its "Claude Free" tab group:
+// selecting a tab outside the group hides the extension (panel closes, the
+// agent stops) and closing the group shuts the extension down. The computer
+// tool refuses to touch any tab outside the group, so the agent never sees
+// what happens outside it.
+
+let groupConfinementEnabled = true;
+let confinementLocked = false;
+
+async function loadConfinementSetting(): Promise<void> {
+  try {
+    const { settings } = await chrome.storage.local.get('settings');
+    groupConfinementEnabled = (settings as AppSettings | undefined)?.groupConfinement ?? true;
+  } catch {
+    groupConfinementEnabled = true;
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.settings) {
+    groupConfinementEnabled = (changes.settings.newValue as AppSettings | undefined)?.groupConfinement ?? true;
+  }
+});
+
+async function closeSidePanel(): Promise<void> {
+  try {
+    const sidePanelApi = chrome.sidePanel as unknown as { close?: () => Promise<void> };
+    if (typeof sidePanelApi.close === 'function') await sidePanelApi.close();
+  } catch { /* already closed or unsupported */ }
+}
+
+/** Tells the side panel (if open) that confinement kicked in or cleared. */
+function notifyConfinement(mode: 'hide' | 'close' | 'unlock'): void {
+  chrome.runtime.sendMessage({ type: 'CONFINEMENT_CHANGED', mode }).catch(() => {});
+}
+
+/** Re-checks the active tab against the extension group and hides the extension
+ * when the user stepped outside it (or unlocks when they came back). */
+async function evaluateConfinement(): Promise<void> {
+  if (!groupConfinementEnabled) return;
+  const groupId = getExtensionGroupId();
+  if (groupId === undefined) return; // no group yet — nothing to confine against
+  const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!active?.id) return;
+  const inside = await isTabInExtensionGroup(active.id);
+  if (!inside && !confinementLocked) {
+    confinementLocked = true;
+    await closeSidePanel();
+    notifyConfinement('hide');
+  } else if (inside && confinementLocked) {
+    confinementLocked = false;
+    notifyConfinement('unlock');
+  }
+}
+
+/** Full shutdown path: the extension's group (or a task group, under
+ * confinement) is gone — stop the agent, close its tabs, close the panel. */
+function confinementClose(): void {
+  if (confinementLocked) return;
+  confinementLocked = true;
+  notifyConfinement('close');
+  closeSidePanel();
+}
+
+chrome.tabs.onActivated.addListener(() => { evaluateConfinement().catch(() => {}); });
+// Tab dragged out of the group / ungrouped while active — re-check.
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  if (changeInfo.groupId !== undefined) evaluateConfinement().catch(() => {});
+});
+chrome.tabGroups.onRemoved.addListener((removedGroup) => {
+  if (!groupConfinementEnabled) return;
+  const groupId = removedGroup.id;
+  if (isExtensionGroupId(groupId)) {
+    clearExtensionGroup(groupId);
+    confinementClose();
+  } else if (isExtensionTrackedGroup(groupId)) {
+    confinementClose();
+  }
+});
+
+loadConfinementSetting().catch(() => {});
 
 // ── Recording state ───────────────────────────────────────────────────────────
 
@@ -550,6 +637,15 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
   }
 
   const tabId = await getWebTabId(windowId);
+
+  // Group confinement: when the extension group exists, the computer tool only
+  // acts on tabs inside it — the agent never touches (or even observes) tabs
+  // outside the group.
+  if (groupConfinementEnabled && getExtensionGroupId() !== undefined) {
+    if (!(await isTabInExtensionGroup(tabId))) {
+      return [{ type: 'text', text: 'Confinement: the active tab is outside the Claude Free group. The extension only works inside its tab group — select a tab in the group first.' }];
+    }
+  }
 
   switch (action.action) {
 
@@ -1058,6 +1154,10 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
 
       if (op === 'switch') {
         if (action.tab_id === undefined) return [{ type: 'text', text: JSON.stringify({ success: false, error: 'tab_id required for switch' }) }];
+        // Confinement: switching to a tab outside the extension group is refused.
+        if (groupConfinementEnabled && getExtensionGroupId() !== undefined && !(await isTabInExtensionGroup(action.tab_id))) {
+          return [{ type: 'text', text: JSON.stringify({ success: false, error: 'Confinement: refusing to switch to a tab outside the Claude Free group' }) }];
+        }
         await chrome.tabs.update(action.tab_id, { active: true });
         return [{ type: 'text', text: JSON.stringify({ success: true, tabId: action.tab_id }) }];
       }
@@ -1102,13 +1202,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'PANEL_OPENED') {
     // Side panel opened: group the user's current web tab into the extension
     // group so the agent's work stays visually isolated from other browsing.
-    // No-op when the active tab is already grouped or isn't a web tab.
+    // No-op when the active tab is already grouped or isn't a web tab. Under
+    // confinement the state is re-evaluated (re-locks when the user opened the
+    // panel while outside the group; unlocks when a fresh group was created).
     (async () => {
       try {
         const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
         if (active?.id) await ensureExtensionGroup(active.id);
+        await evaluateConfinement();
       } catch { /* best-effort */ }
       sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  if (msg.type === 'GET_CONFINEMENT_STATE') {
+    (async () => {
+      let inside = false;
+      const groupId = getExtensionGroupId();
+      const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (active?.id && groupId !== undefined) inside = await isTabInExtensionGroup(active.id);
+      sendResponse({ enabled: groupConfinementEnabled, locked: confinementLocked, groupId, inside });
     })();
     return true;
   }

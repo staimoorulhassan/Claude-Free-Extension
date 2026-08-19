@@ -379,6 +379,22 @@ export function SettingsPanel() {
           </div>
 
           <div className="toggle-row">
+            <label>
+              Group confinement
+              <span className="toggle-hint">The extension only works inside its "Claude Free" tab group — it hides when you select another tab and closes when the group is closed</span>
+            </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                aria-label="Group confinement"
+                checked={settings.groupConfinement ?? true}
+                onChange={e => set({ groupConfinement: e.target.checked })}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+
+          <div className="toggle-row">
             <label>Use Steel stealth browser</label>
             <label className="toggle">
               <input

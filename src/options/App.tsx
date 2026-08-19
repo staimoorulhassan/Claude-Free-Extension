@@ -111,6 +111,7 @@ export function App() {
         <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: '#6f6a61', marginBottom: 12 }}>Features</h2>
         <ToggleRow label="Computer use (browser control)" checked={settings.computerUseEnabled} onChange={v => update({ computerUseEnabled: v })} />
         <ToggleRow label="Boss mode" checked={settings.bossMode ?? false} onChange={v => update({ bossMode: v })} />
+        <ToggleRow label="Group confinement" checked={settings.groupConfinement ?? true} onChange={v => update({ groupConfinement: v })} />
       </section>
 
       <section style={{ marginBottom: 28 }}>

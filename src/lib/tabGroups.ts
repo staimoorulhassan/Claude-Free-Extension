@@ -95,6 +95,37 @@ export function getExtensionGroupId(): number | undefined {
   return extensionGroupId;
 }
 
+/** True when the given group id is the extension's own group. */
+export function isExtensionGroupId(groupId: number): boolean {
+  return extensionGroupId === groupId;
+}
+
+/** True when the group belongs to the extension (the extension group or any
+ * task-scoped group created via manage_tabs). */
+export function isExtensionTrackedGroup(groupId: number): boolean {
+  if (extensionGroupId === groupId) return true;
+  for (const gid of groupsByTask.values()) if (gid === groupId) return true;
+  return false;
+}
+
+/** True when tabId is a member of the extension group (false when there is no
+ * extension group this session or the tab can't be read). */
+export async function isTabInExtensionGroup(tabId: number): Promise<boolean> {
+  if (extensionGroupId === undefined) return false;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return typeof tab.groupId === 'number' && tab.groupId >= 0 && tab.groupId === extensionGroupId;
+  } catch {
+    return false;
+  }
+}
+
+/** Drops the cached extension-group id — call when the group is removed. With no
+ * groupId it always clears; with one it only clears when it matches. */
+export function clearExtensionGroup(groupId?: number): void {
+  if (groupId === undefined || extensionGroupId === groupId) extensionGroupId = undefined;
+}
+
 /** Clears bookkeeping for a task without touching any tabs — call after the tabs
  * themselves have already been closed (see closeTaskTabs in background.ts). */
 export function forgetGroup(taskId: string): void {
