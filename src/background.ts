@@ -109,14 +109,13 @@ async function verifyJournalTabExists(journal: ExecutionJournal): Promise<boolea
 
 resumeInProgressTasksOnStartup().catch(() => {});
 
-chrome.action.onClicked.addListener(async (tab) => {
-  if (tab.windowId) await chrome.sidePanel.open({ windowId: tab.windowId });
-});
-
-chrome.commands.onCommand.addListener(async (command) => {
+chrome.commands.onCommand.addListener((command) => {
   if (command === 'toggle-side-panel') {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (tab?.windowId) await chrome.sidePanel.open({ windowId: tab.windowId });
+    // sidePanel.open() MUST be called synchronously to preserve the user gesture.
+    // openPanelOnActionClick handles the action-icon click; this handles Ctrl+E.
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, ([tab]) => {
+      if (tab?.windowId) chrome.sidePanel.open({ windowId: tab.windowId });
+    });
   }
 });
 
