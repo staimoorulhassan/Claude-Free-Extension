@@ -29,7 +29,8 @@
     "tabGroups",
     "downloads",
     "offscreen",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "microphone"
   ],
   "host_permissions": [
     "<all_urls>"
