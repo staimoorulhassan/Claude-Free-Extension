@@ -447,8 +447,8 @@ function drainErrors(tabId: number): { consoleErrors: ConsoleErrorEntry[]; netwo
 // never goes quiet — e.g. a live-updating dashboard — can't hang the loop).
 
 async function waitForSettlement(tabId: number, opts?: { timeoutMs?: number; quietMs?: number }): Promise<void> {
-  const timeoutMs = opts?.timeoutMs ?? 3000;
-  const quietMs = opts?.quietMs ?? 500;
+  const timeoutMs = opts?.timeoutMs ?? 1500;
+  const quietMs = opts?.quietMs ?? 200;
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -650,7 +650,7 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
 
     case 'screenshot': {
       await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' });
-      await new Promise(r => setTimeout(r, 150));
+      await new Promise(r => setTimeout(r, 50));
 
       let base64: string;
       let mediaType = 'image/jpeg';
@@ -695,7 +695,7 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
 
       // Issue 7 / T012: wait for DOMContentReady (tab status 'complete') instead of a fixed sleep
       await new Promise<void>(resolve => {
-        const MAX_WAIT = 15000;
+        const MAX_WAIT = 8000;
         const timer = setTimeout(resolve, MAX_WAIT);
         const listener = (updatedId: number, info: chrome.tabs.TabChangeInfo) => {
           if (updatedId === tabId && info.status === 'complete') {
@@ -1017,7 +1017,7 @@ async function handleComputerUse(action: ComputerAction, windowId?: number): Pro
       if (action.include_vision) {
         try {
           await broadcastToWebTabs({ type: 'HIDE_FOR_TOOL_USE' });
-          await new Promise(r => setTimeout(r, 150));
+          await new Promise(r => setTimeout(r, 50));
           const metrics = await chrome.scripting.executeScript({
             target: { tabId },
             func: () => ({

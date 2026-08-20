@@ -790,11 +790,11 @@ export const useStore = create<Store>((set, get) => ({
           break;
         }
         
-        // T051: Update progress tracking
+        // T051: Update progress tracking (updateProgress returns the updated object)
         const currentProgress = await getProgress(taskId);
         if (currentProgress) {
-          await updateProgress(taskId, agentIteration, `Round ${agentIteration}: Processing...`);
-          set({ currentProgress: await getProgress(taskId) });
+          const updatedProgress = await updateProgress(taskId, agentIteration, `Round ${agentIteration}: Processing...`);
+          set({ currentProgress: updatedProgress });
         }
 
         if (debugMode) {
