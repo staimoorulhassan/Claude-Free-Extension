@@ -30,7 +30,8 @@
     "downloads",
     "offscreen",
     "declarativeNetRequest",
-    "microphone"
+    "microphone",
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "<all_urls>"
